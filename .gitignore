@@ -1,0 +1,42 @@
+<<<<<<< HEAD
+
+pdf-test/node_modules/
+pdf-test/dist/
+pdf-test/.env
+
+
+backend/__pycache__/
+backend/venv/
+backend/.env
+backend/*.html
+backend/*.log
+
+
+.DS_Store
+Thumbs.db
+=======
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+>>>>>>> 1d3fed7ff5a3dd5b77fb4051bb5c7af5d62717d7
