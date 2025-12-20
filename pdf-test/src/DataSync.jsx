@@ -4,7 +4,19 @@ import { useNavigate } from 'react-router-dom';
 const DataSync = () => {
   const [status, setStatus] = useState('');
   const navigate = useNavigate();
+  const getTargetYearCode = () => {
+    const currentYear = new Date().getFullYear(); 
+    const currentMonth = new Date().getMonth() + 1;
+    
+    
+    if (currentYear === 2026) {
+      return 26;
+    }
 
+    
+    let academicYear = currentMonth >= 7 ? currentYear : currentYear - 1;
+    return academicYear % 100;
+  }; 
   const handleSync = async () => {
     setStatus('Reading LMS Page...');
 
@@ -16,15 +28,38 @@ const DataSync = () => {
     }
 
     chrome.tabs.sendMessage(tab.id, { action: 'extractData' }, (response) => {
-      if (response?.success) {
+     if (response?.success) {
+        const allFetched = response.courses;
+        const targetYearCode = getTargetYearCode(); 
+        
+        
+        const currentSemesterCourses = allFetched.filter(course => {
+          const title = course.title || "";
+          const searchPattern = `UCS${targetYearCode}`;
+          return title.includes(searchPattern) || title.includes(`20${targetYearCode}`);
+        });
+
+       
+        const lmsStats = {
+          currentCount: currentSemesterCourses.length,
+          totalCount: allFetched.length,
+          overdueCount: response.overdueCount || 0,
+          semester: 6 
+        };
+
+        
         chrome.storage.local.set({ 
-          allCourses: response.courses,
-          user: response.user 
+          allCourses: allFetched,
+          currentSemesterCourses: currentSemesterCourses,
+          lmsStats: lmsStats,
+          user: response.user, 
+          overdueAssignments:response.deadlines||[]
         }, () => {
           setStatus('Sync Complete!');
           navigate('/main/dashboard');
         });
-      } else {
+      }
+      else{
         setStatus(`Error: ${response?.error || 'Failed to extract data'}`);
       }
     });

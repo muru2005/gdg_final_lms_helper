@@ -3,6 +3,8 @@ import reactLogo from './assets/react.svg'
 import viteLogo from '/vite.svg'
 import Home from "./Home"
 import DataSync from './DataSync'
+import Dashboard from "./Dashboard"
+import Courses from "./Courses"
 import {BrowserRouter,Routes,Route,useLocation,Navigate} from "react-router-dom"
 import MainLayout from './MainLayout'
 function AppWrapper() {
@@ -17,11 +19,9 @@ function AppWrapper() {
         <Route path="/main" element={<MainLayout/>}>
          
           <Route path="dashboard" element={
-            <div className="p-4 bg-white rounded-xl shadow-sm">
-              Dashboard is coming soon! Check the header above.
-            </div>
+            <Dashboard/>
           } />
-          <Route path="courses" element={<div>Courses List Placeholder</div>} />
+          <Route path="courses" element={<Courses/>} />
         </Route>
       </Routes>
     </>
