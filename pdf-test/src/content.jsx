@@ -177,25 +177,57 @@ setInterval(injectAIButtons, 2000);
 
   // --- 2. MESSAGE LISTENER ---
   // This connects the content script to your React Side Panel
-  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.action === 'extractData') {
-      if (!checkIfLoggedIn()) {
-        sendResponse({ success: false, error: 'Not logged in to LMS' });
-        return;
-      }
-      sendResponse({
-        success: true,
-        courses: extractCourses(),
-        url: window.location.href
-      });
+  // --- 2. MESSAGE LISTENER ---
+ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === 'extractData') {
+    if (!checkIfLoggedIn()) {
+      sendResponse({ success: false, error: 'Not logged in to LMS' });
+      return;
     }
+    sendResponse({ success: true, courses: extractCourses() });
+  }
 
-    if (request.action === 'extractCourseMaterials') {
-      sendResponse({
-        success: true,
-        materials: extractCourseMaterials(),
-      });
-    }
+  if (request.action === 'deepExtractAssignments') {
+    const courses = extractCourses();
+    
+    const assignmentPromises = courses.map(async (course) => {
+      try {
+        const html = await fetch(course.link).then(res => res.text());
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+
+        const assigns = Array.from(doc.querySelectorAll('.activity.modtype_assign'));
+        
+        return assigns.filter(item => {
+          const doneBtn = item.querySelector('button.btn-success');
+          const isDone = doneBtn?.textContent.trim().includes('Done') || !!item.querySelector('.fa-check');
+          return !isDone;
+        }).map(item => {
+          const dateElements = item.querySelectorAll('[data-region="activity-dates"] div');
+          let dueDate = "No date found";
+
+          dateElements.forEach(el => {
+            if (el.textContent.includes('Due:')) {
+              dueDate = el.textContent.replace('Due:', '').trim();
+            }
+          });
+          
+          return {
+            id: item.getAttribute('data-id'),
+            title: item.getAttribute('data-activityname'),
+            courseName: course.title,
+            url: item.querySelector('a.aalink')?.href,
+            dueDate: dueDate
+          };
+        });
+      } catch (e) { return []; }
+    });
+
+    Promise.all(assignmentPromises).then(results => {
+      sendResponse({ success: true, assignments: results.flat() });
+    });
     return true; 
-  });
+  }
+});
+   
 })();
