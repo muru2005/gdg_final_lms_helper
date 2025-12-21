@@ -4,19 +4,7 @@ import { useNavigate } from 'react-router-dom';
 const DataSync = () => {
   const [status, setStatus] = useState('');
   const navigate = useNavigate();
-  const getTargetYearCode = () => {
-    const currentYear = new Date().getFullYear(); 
-    const currentMonth = new Date().getMonth() + 1;
-    
-    
-    if (currentYear === 2026) {
-      return 26;
-    }
-
-    
-    let academicYear = currentMonth >= 7 ? currentYear : currentYear - 1;
-    return academicYear % 100;
-  }; 
+  
   const handleSync = async () => {
     setStatus('Reading LMS Page...');
 
@@ -30,18 +18,19 @@ const DataSync = () => {
     chrome.tabs.sendMessage(tab.id, { action: 'extractData' }, (response) => {
      if (response?.success) {
         const allFetched = response.courses;
-        const targetYearCode = getTargetYearCode(); 
-        
-        
-        const currentSemesterCourses = allFetched.filter(course => {
-          const title = course.title || "";
-          const searchPattern = `UCS${targetYearCode}`;
-          return title.includes(searchPattern) || title.includes(`20${targetYearCode}`);
-        });
-
-       
+        const currentyearcode=new Date().getFullYear()%100;
+        const targetyearplusone=(currentyearcode+1).toString();
+        const targetyear=(currentyearcode).toString();
+        const getCourseYear = (title) => {
+        const match = title.match(/[A-Z]{3}(\d{2})\d{2}/i);
+        return match ? match[1] : null;
+      };
+       let filteredresults=allFetched.filter(course=>getCourseYear(course.title)===targetyearplusone);
+       if(filteredresults.length==0){
+        filteredresults=allFetched.filter(course=>getCourseYear(course.title)===targetyear);
+       }
         const lmsStats = {
-          currentCount: currentSemesterCourses.length,
+          currentCount: filteredresults.length,
           totalCount: allFetched.length,
           overdueCount: response.overdueCount || 0,
           semester: 6 
@@ -50,7 +39,7 @@ const DataSync = () => {
         
         chrome.storage.local.set({ 
           allCourses: allFetched,
-          currentSemesterCourses: currentSemesterCourses,
+          currentSemesterCourses: filteredresults,
           lmsStats: lmsStats,
           user: response.user, 
           overdueAssignments:response.deadlines||[]
