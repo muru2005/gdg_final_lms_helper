@@ -5,17 +5,50 @@ const Home = () => {
   const navigate = useNavigate();
 
   const handleLogin = () => {
-    const user = {
-      name: "Murari Sreekumar",
-      email: "murari2310237@ssn.edu.in"
-    };
+    console.log('[UI] Login clicked, requesting OAuth');
 
-    chrome.storage.local.set({ 
-      user: user,
-      isLoggedIn: true 
-    }, () => {
-      navigate('/sync');
-    });
+    chrome.runtime.sendMessage(
+      { type: 'getAuthToken' },
+      (response) => {
+        if (!response || !response.ok) {
+          console.error('[UI] OAuth failed:', response?.error);
+          alert('Google login failed');
+          return;
+        }
+
+        const token = response.token;
+        console.log('[UI] OAuth token received');
+
+        // Optional: fetch user profile
+        chrome.runtime.sendMessage(
+          { type: 'getUserProfile' },
+          (profileRes) => {
+            if (!profileRes?.ok) {
+              alert('Failed to fetch user profile');
+              return;
+            }
+
+            const user = {
+              name: profileRes.profile.name,
+              email: profileRes.profile.email,
+              picture: profileRes.profile.picture
+            };
+
+            chrome.storage.local.set(
+              {
+                sessionToken: token,
+                user,
+                isLoggedIn: true
+              },
+              () => {
+                console.log('[UI] User stored, navigating');
+                navigate('/sync');
+              }
+            );
+          }
+        );
+      }
+    );
   };
 
   const features = [
@@ -56,10 +89,10 @@ const Home = () => {
         <div className='mt-4'>
           <button 
             onClick={handleLogin} 
-            className='w-full flex items-center justify-center gap-3 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold py-4 px-4 rounded-xl transition-all shadow-sm'
+            className='cursor-pointer w-full flex items-center justify-center gap-3 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold py-4 px-4 rounded-xl transition-all shadow-sm'
           >
             <img alt="LMS" className="w-5 h-5" src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"/> 
-            <span>Login with LMS Account</span>         
+            <span>Sign in with Google</span>         
           </button>
         </div>
       </div>
