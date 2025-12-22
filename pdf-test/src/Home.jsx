@@ -3,6 +3,22 @@ import { useNavigate } from 'react-router-dom';
 
 const Home = () => {
   const navigate = useNavigate();
+  const triggerCalendarSync = (token) => {
+    fetch('http://localhost:5000/sync-calendar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: token })
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.ok) {
+        console.log(`[Sync] Success: Added ${data.details.circulars_added} circulars.`);
+      } else {
+        console.error('[Sync] Backend error:', data.error);
+      }
+    })
+    .catch(err => console.error("[Sync] Network error:", err));
+  };
 
   const handleLogin = () => {
     console.log('[UI] Login clicked, requesting OAuth');
@@ -19,7 +35,6 @@ const Home = () => {
         const token = response.token;
         console.log('[UI] OAuth token received');
 
-        // Optional: fetch user profile
         chrome.runtime.sendMessage(
           { type: 'getUserProfile' },
           (profileRes) => {
@@ -41,7 +56,11 @@ const Home = () => {
                 isLoggedIn: true
               },
               () => {
-                console.log('[UI] User stored, navigating');
+                console.log('[UI] User stored, triggering background calendar sync');
+                
+                // --- TRIGGER PYTHON SYNC HERE ---
+                triggerCalendarSync(token); 
+
                 navigate('/sync');
               }
             );
@@ -49,7 +68,8 @@ const Home = () => {
         );
       }
     );
-  };
+  }; 
+  
 
   const features = [
     { title: 'Course Management', desc: 'View all your current and previous semester courses in an organized manner', status: 'available' },
