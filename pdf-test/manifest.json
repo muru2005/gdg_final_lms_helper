@@ -18,13 +18,14 @@
       "js": ["src/content.jsx"]
     }
   ],
-  "permissions": ["storage", "sidePanel", "activeTab", "scripting", "downloads", "identity"],
+  "permissions": ["storage", "sidePanel", "activeTab", "scripting", "downloads", "identity", "notifications"],
   "host_permissions": ["https://lms.ssn.edu.in/*",
     "https://www.googleapis.com/*",
-    "http://localhost:5000/*"
+    "http://localhost:5000/*",
+    "http://192.168.1.6:5000/*"
   ],
   "oauth2": {
-    "client_id": "758127203338-n0p7v8aq7men1dshnobehtt1806ve9j2.apps.googleusercontent.com",
+    "client_id": "758127203338-j9bjnpsvo8fb1vq6lfnm6im0qgdh5qfk.apps.googleusercontent.com",
     "scopes": [
       "https://www.googleapis.com/auth/drive.file",
       "https://www.googleapis.com/auth/userinfo.email",

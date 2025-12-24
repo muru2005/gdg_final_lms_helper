@@ -3,21 +3,13 @@ import { useNavigate } from 'react-router-dom';
 
 const Home = () => {
   const navigate = useNavigate();
-  const triggerCalendarSync = (token) => {
-    fetch('http://localhost:5000/sync-calendar', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: token })
-    })
-    .then(res => res.json())
-    .then(data => {
-      if (data.ok) {
-        console.log(`[Sync] Success: Added ${data.details.circulars_added} circulars.`);
-      } else {
-        console.error('[Sync] Backend error:', data.error);
-      }
-    })
-    .catch(err => console.error("[Sync] Network error:", err));
+  // Request background to sync calendar (background performs POST)
+  const requestCalendarSync = (token) => {
+    chrome.runtime.sendMessage({ type: 'SYNC_CALENDAR', token }, (resp) => {
+      if (!resp) return console.error('[UI] No response from background for SYNC_CALENDAR');
+      if (resp.ok) console.log('[Sync] Background sync started', resp.details || '');
+      else console.error('[Sync] Background sync error:', resp.error);
+    });
   };
 
   const handleLogin = () => {
@@ -57,9 +49,9 @@ const Home = () => {
               },
               () => {
                 console.log('[UI] User stored, triggering background calendar sync');
-                
-                // --- TRIGGER PYTHON SYNC HERE ---
-                triggerCalendarSync(token); 
+
+                // --- TRIGGER PYTHON SYNC VIA BACKGROUND ---
+                requestCalendarSync(token);
 
                 navigate('/sync');
               }
@@ -68,8 +60,8 @@ const Home = () => {
         );
       }
     );
-  }; 
-  
+  };
+
 
   const features = [
     { title: 'Course Management', desc: 'View all your current and previous semester courses in an organized manner', status: 'available' },
@@ -98,21 +90,20 @@ const Home = () => {
             <div className="text-sm text-slate-500 leading-relaxed mb-3">
               {feature.desc}
             </div>
-            <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-              feature.status === 'available' ? 'bg-[#d4edda] text-[#155724]' : 'bg-[#fff3cd] text-[#856404]'
-            }`}>
+            <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${feature.status === 'available' ? 'bg-[#d4edda] text-[#155724]' : 'bg-[#fff3cd] text-[#856404]'
+              }`}>
               {feature.status === 'available' ? 'Available' : 'Coming Soon'}
             </span>
           </div>
         ))}
-        
+
         <div className='mt-4'>
-          <button 
-            onClick={handleLogin} 
+          <button
+            onClick={handleLogin}
             className='cursor-pointer w-full flex items-center justify-center gap-3 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold py-4 px-4 rounded-xl transition-all shadow-sm'
           >
-            <img alt="LMS" className="w-5 h-5" src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"/> 
-            <span>Sign in with Google</span>         
+            <img alt="LMS" className="w-5 h-5" src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" />
+            <span>Sign in with Google</span>
           </button>
         </div>
       </div>
