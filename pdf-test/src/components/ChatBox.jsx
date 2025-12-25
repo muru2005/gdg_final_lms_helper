@@ -1,9 +1,7 @@
-import { useState, useRef, useEffect } from 'react';
+/* global chrome */
+import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import axios from 'axios';
 import { MarkdownRenderer } from '../utils/markdownParser.jsx';
-
-const BACKEND_URL = 'http://192.168.1.6:5000';
 
 const ChatBox = ({ isOpen, onClose, filePath }) => {
     const [messages, setMessages] = useState([]);
@@ -11,11 +9,25 @@ const ChatBox = ({ isOpen, onClose, filePath }) => {
     const [loading, setLoading] = useState(false);
     const scrollRef = useRef(null);
 
+    // 1. AUTO-SCROLL TO BOTTOM
     useEffect(() => {
         if (scrollRef.current) {
             scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
         }
     }, [messages]);
+
+    // 2. MESSAGE LISTENER: Catch AI answers from the background script
+    useEffect(() => {
+        const messageListener = (request) => {
+            if (request.action === 'RECEIVE_CHAT') {
+                setMessages(prev => [...prev, { role: 'assistant', content: request.payload.answer }]);
+                setLoading(false);
+            }
+        };
+
+        chrome.runtime.onMessage.addListener(messageListener);
+        return () => chrome.runtime.onMessage.removeListener(messageListener);
+    }, []);
 
     const handleSend = async () => {
         if (!input.trim()) return;
@@ -25,18 +37,15 @@ const ChatBox = ({ isOpen, onClose, filePath }) => {
         setInput('');
         setLoading(true);
 
-        try {
-            const response = await axios.post(`${BACKEND_URL}/chat`, {
+        // 3. SEND TO BACKGROUND BRIDGE
+        // Instead of axios, we ask the background script to talk to Flask
+        chrome.runtime.sendMessage({ 
+            action: 'CHAT', 
+            data: { 
                 query: userMsg,
-                file_path: filePath
-            });
-            setMessages(prev => [...prev, { role: 'assistant', content: response.data.answer }]);
-        } catch (error) {
-            console.log(error);
-            setMessages(prev => [...prev, { role: 'assistant', content: "Sorry, something went wrong." }]);
-        } finally {
-            setLoading(false);
-        }
+                file_path: filePath 
+            } 
+        });
     };
 
     return (
@@ -46,121 +55,46 @@ const ChatBox = ({ isOpen, onClose, filePath }) => {
                     initial={{ opacity: 0, y: 50, scale: 0.9 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: 50, scale: 0.9 }}
-                    style={{
-                        position: 'fixed',
-                        bottom: '30px',
-                        right: '30px',
-                        width: '350px',
-                        height: '500px',
-                        backgroundColor: 'white',
-                        borderRadius: '16px',
-                        boxShadow: '0 10px 40px rgba(0,0,0,0.2)',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        zIndex: 3000,
-                        overflow: 'hidden',
-                        border: '1px solid #eee'
-                    }}
+                    style={chatContainerStyle}
                 >
-                    {/* Header */}
-                    <div style={{ padding: '15px', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fafafa' }}>
-                        <span style={{ fontWeight: 'bold' }}>Ask AI</span>
-                        <button onClick={onClose} style={{ border: 'none', background: 'none', fontSize: '20px', cursor: 'pointer' }}>✕</button>
+                    <div style={headerStyle}>
+                        <span style={{ fontWeight: 'bold' }}>💬 Ask PDF AI</span>
+                        <button onClick={onClose} style={closeIconStyle}>✕</button>
                     </div>
 
-                    {/* Messages */}
-                    <div ref={scrollRef} style={{ flex: 1, padding: '15px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '15px', backgroundColor: '#fff' }}>
+                    <div ref={scrollRef} style={chatAreaStyle}>
                         {messages.length === 0 && (
-                            <div style={{ textAlign: 'center', color: '#888', marginTop: '50px' }}>
-                                👋 Ask me anything about this file!
+                            <div style={welcomeTextStyle}>
+                                👋 I've read this document. Ask me anything!
                             </div>
                         )}
                         {messages.map((msg, idx) => (
                             <div key={idx} style={{
+                                ...bubbleStyle,
                                 alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start',
-                                backgroundColor: msg.role === 'user' ? '#007AFF' : '#f8f9fa',
-                                color: msg.role === 'user' ? 'white' : '#333',
-                                padding: '12px 16px',
-                                borderRadius: '16px',
-                                maxWidth: '85%',
-                                wordWrap: 'break-word',
-                                borderBottomRightRadius: msg.role === 'user' ? '4px' : '16px',
-                                borderBottomLeftRadius: msg.role === 'assistant' ? '4px' : '16px',
-                                boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-                                border: msg.role === 'assistant' ? '1px solid #e2e8f0' : 'none'
+                                backgroundColor: msg.role === 'user' ? '#007AFF' : '#f1f5f9',
+                                color: msg.role === 'user' ? 'white' : '#1e293b',
                             }}>
                                 {msg.role === 'assistant' ? (
-                                    <MarkdownRenderer
-                                        text={msg.content}
-                                        style={{
-                                            fontSize: '14px',
-                                            lineHeight: '1.6'
-                                        }}
-                                    />
+                                    <MarkdownRenderer text={msg.content} style={{ fontSize: '13px' }} />
                                 ) : (
-                                    <span style={{ fontSize: '14px', lineHeight: '1.5' }}>{msg.content}</span>
+                                    <span>{msg.content}</span>
                                 )}
                             </div>
                         ))}
-                        {loading && (
-                            <div style={{
-                                alignSelf: 'flex-start',
-                                backgroundColor: '#f8f9fa',
-                                padding: '12px 16px',
-                                borderRadius: '16px',
-                                border: '1px solid #e2e8f0',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '8px'
-                            }}>
-                                <div style={{
-                                    width: '8px',
-                                    height: '8px',
-                                    borderRadius: '50%',
-                                    backgroundColor: '#007AFF',
-                                    animation: 'pulse 1.5s infinite'
-                                }}></div>
-                                <span style={{ fontSize: '14px', color: '#666' }}>AI is thinking...</span>
-                            </div>
-                        )}
+                        {loading && <div style={loaderStyle}>Thinking...</div>}
                     </div>
 
-                    {/* Input */}
-                    <div style={{ padding: '15px', borderTop: '1px solid #eee' }}>
-                        <div style={{ display: 'flex', gap: '10px' }}>
+                    <div style={inputAreaStyle}>
+                        <div style={{ display: 'flex', gap: '8px' }}>
                             <input
-                                type="text"
-                                value={input}
+                                type="text" value={input}
                                 onChange={(e) => setInput(e.target.value)}
                                 onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                                placeholder="Type a message..."
-                                style={{
-                                    flex: 1,
-                                    padding: '10px',
-                                    borderRadius: '20px',
-                                    border: '1px solid #ddd',
-                                    outline: 'none',
-                                    fontSize: '14px'
-                                }}
+                                placeholder="Query this file..."
+                                style={inputFieldStyle}
                             />
-                            <button
-                                onClick={handleSend}
-                                disabled={loading}
-                                style={{
-                                    backgroundColor: '#007AFF',
-                                    color: 'white',
-                                    border: 'none',
-                                    borderRadius: '50%',
-                                    width: '36px',
-                                    height: '36px',
-                                    cursor: 'pointer',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center'
-                                }}
-                            >
-                                ➝
-                            </button>
+                            <button onClick={handleSend} style={sendBtnStyle}>➝</button>
                         </div>
                     </div>
                 </motion.div>
@@ -168,5 +102,24 @@ const ChatBox = ({ isOpen, onClose, filePath }) => {
         </AnimatePresence>
     );
 };
+
+// --- STYLES (MATCHING YOUR MODERN UI) ---
+const chatContainerStyle = {
+    position: 'fixed', bottom: '30px', right: '30px',
+    width: '380px', height: '550px', backgroundColor: 'white',
+    borderRadius: '24px', boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+    display: 'flex', flexDirection: 'column', zIndex: 1000020, // Highest layer
+    overflow: 'hidden', border: '1px solid #e2e8f0'
+};
+
+const headerStyle = { padding: '18px 22px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fff' };
+const closeIconStyle = { border: 'none', background: 'none', fontSize: '20px', cursor: 'pointer', color: '#94a3b8' };
+const chatAreaStyle = { flex: 1, padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '18px', backgroundColor: '#fff' };
+const welcomeTextStyle = { textAlign: 'center', color: '#94a3b8', marginTop: '60px', fontSize: '14px' };
+const bubbleStyle = { padding: '12px 18px', borderRadius: '18px', maxWidth: '85%', fontSize: '14px', lineHeight: '1.5', boxShadow: '0 2px 5px rgba(0,0,0,0.05)' };
+const loaderStyle = { fontSize: '12px', color: '#6366f1', paddingLeft: '5px', fontWeight: 'bold' };
+const inputAreaStyle = { padding: '15px 20px', borderTop: '1px solid #f1f5f9', backgroundColor: '#fff' };
+const inputFieldStyle = { flex: 1, padding: '12px 18px', borderRadius: '25px', border: '1px solid #e2e8f0', outline: 'none', fontSize: '14px' };
+const sendBtnStyle = { backgroundColor: '#007AFF', color: 'white', border: 'none', borderRadius: '50%', width: '40px', height: '40px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px' };
 
 export default ChatBox;

@@ -1,77 +1,59 @@
-import { useRef } from 'react';
+/* global chrome */
+import React, { useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import jsPDF from 'jspdf';
 import { MarkdownRenderer } from '../utils/markdownParser.jsx';
 
-const SummaryModal = ({ isOpen, onClose, summary, fileName, isLoading }) => {
+// REMOVED: axios and internal useEffect fetch logic
+// This component now purely DISPLAYS data passed from the AIViewer parent.
+
+const SummaryModal = ({ isOpen, onClose, data, isLoading, fileName }) => {
     const contentRef = useRef(null);
 
+    // --- PDF DOWNLOAD LOGIC ---
     const handleDownload = () => {
-        if (!summary) return;
+        if (!data) return;
         const doc = new jsPDF();
 
-        // Convert markdown formatting to plain text for PDF
         const convertMarkdownToText = (text) => {
             return text
-                .replace(/\*\*(.*?)\*\*/g, '$1') // Remove bold markers
-                .replace(/\*(.*?)\*/g, '$1')     // Remove italic markers
-                .replace(/__(.*?)__/g, '$1')     // Remove underline markers
-                .replace(/•/g, '• ')             // Ensure bullet spacing
-                .replace(/◦/g, '  ◦ ')           // Ensure sub-bullet spacing
+                .replace(/\*\*(.*?)\*\*/g, '$1')
+                .replace(/\*(.*?)\*/g, '$1')
+                .replace(/__(.*?)__/g, '$1')
+                .replace(/•/g, '• ')
+                .replace(/◦/g, '  ◦ ')
                 .replace(/▪/g, '  ▪ ');
         };
 
-        const cleanText = convertMarkdownToText(summary);
-        
-        // Split text to fit page with better formatting
+        const cleanText = convertMarkdownToText(data);
         const lines = cleanText.split('\n');
         const pageWidth = 180;
         const pageHeight = 280;
         let y = 20;
         
-        // Title
         doc.setFontSize(18);
         doc.setFont(undefined, 'bold');
         doc.text("Document Summary", 105, y, { align: "center" });
         y += 15;
         
-        // Add a line separator
         doc.setLineWidth(0.5);
         doc.line(15, y, 195, y);
         y += 10;
         
-        doc.setFontSize(11);
-        doc.setFont(undefined, 'normal');
-        
         lines.forEach(line => {
-            if (line.trim() === '') {
-                y += 4; // Small space for empty lines
-                return;
-            }
-            
-            // Check if it's a main heading (contains bold markers in original)
-            const isHeading = summary.includes(`**${line.trim()}**`) || 
-                             line.includes('Main Topics') || 
-                             line.includes('Key Concepts') || 
-                             line.includes('Important Facts') || 
-                             line.includes('Conclusions') || 
-                             line.includes('Additional Details');
+            if (line.trim() === '') { y += 4; return; }
+            const isHeading = line.trim().startsWith('#') || line.toUpperCase() === line.trim();
             
             if (isHeading) {
-                if (y > 30) y += 8; // Extra space before headings
+                if (y > 30) y += 8;
                 doc.setFont(undefined, 'bold');
                 doc.setFontSize(12);
-            } else if (line.trim().startsWith('•')) {
-                doc.setFont(undefined, 'normal');
-                doc.setFontSize(10);
             } else {
                 doc.setFont(undefined, 'normal');
                 doc.setFontSize(11);
             }
             
-            // Split long lines
-            const wrappedLines = doc.splitTextToSize(line, pageWidth);
-            
+            const wrappedLines = doc.splitTextToSize(line.replace(/^#+\s*/, ''), pageWidth);
             wrappedLines.forEach(wrappedLine => {
                 if (y > pageHeight) {
                     doc.addPage();
@@ -82,7 +64,7 @@ const SummaryModal = ({ isOpen, onClose, summary, fileName, isLoading }) => {
             });
         });
 
-        doc.save("document-summary.pdf");
+        doc.save(`${fileName || 'document'}-summary.pdf`);
     };
 
     return (
@@ -92,101 +74,46 @@ const SummaryModal = ({ isOpen, onClose, summary, fileName, isLoading }) => {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    style={{
-                        position: 'fixed',
-                        inset: 0,
-                        backgroundColor: 'rgba(0, 0, 0, 0.5)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        zIndex: 2000,
-                        backdropFilter: 'blur(5px)'
-                    }}
+                    style={overlayStyle}
                     onClick={onClose}
                 >
                     <motion.div
-                        initial={{ scale: 0.9, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1 }}
-                        exit={{ scale: 0.9, opacity: 0 }}
-                        style={{
-                            backgroundColor: 'white',
-                            borderRadius: '16px',
-                            padding: '32px',
-                            width: '95%',
-                            maxWidth: '1000px',
-                            maxHeight: '90vh',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
-                            overflow: 'hidden'
-                        }}
+                        initial={{ scale: 0.9, opacity: 0, y: 20 }}
+                        animate={{ scale: 1, opacity: 1, y: 0 }}
+                        exit={{ scale: 0.9, opacity: 0, y: 20 }}
+                        style={modalStyle}
                         onClick={(e) => e.stopPropagation()}
                     >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', borderBottom: '2px solid #f0f0f0', paddingBottom: '16px' }}>
-                            <h2 style={{ fontSize: '28px', fontWeight: 'bold', margin: 0, color: '#1a1a1a', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                ✨ <span style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Summary - {fileName}</span>
+                        {/* HEADER SECTION */}
+                        <div style={headerStyle}>
+                            <h2 style={titleStyle}>
+                                ✨ <span style={gradientText}>
+                                    Summary: {fileName?.substring(0, 40) || 'Document'}
+                                </span>
                             </h2>
-                            <button
-                                onClick={onClose || (() => window.location.hash = '#/')}
-                                style={{ background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: '#666' }}
-                            >
-                                ← Back
-                            </button>
+                            <button onClick={onClose} style={backBtn}>← Back</button>
                         </div>
 
-                        <div style={{ 
-                            flex: 1, 
-                            overflowY: 'auto', 
-                            paddingRight: '16px', 
-                            lineHeight: '1.8', 
-                            color: '#2d3748',
-                            fontSize: '16px',
-                            background: '#fafafa',
-                            borderRadius: '12px',
-                            padding: '24px',
-                            border: '1px solid #e2e8f0'
-                        }}>
+                        {/* CONTENT SECTION */}
+                        <div style={contentArea}>
                             {isLoading ? (
-                                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '300px', flexDirection: 'column' }}>
-                                    <div className="loader" style={{ fontSize: '18px', color: '#667eea', fontWeight: '600' }}>🔄 Generating Comprehensive Summary...</div>
-                                    <div style={{ marginTop: '12px', fontSize: '14px', color: '#718096' }}>This may take a moment for detailed analysis</div>
+                                <div style={loadingWrapper}>
+                                    <div style={loadingText}>🔄 Generating Comprehensive Summary...</div>
+                                    <div style={subText}>Bypassing security and extracting insights via Llama-3</div>
+                                    <div className="pulse-loader"></div>
                                 </div>
+                            ) : data ? (
+                                <MarkdownRenderer text={data} />
                             ) : (
-                                <MarkdownRenderer 
-                                    text={summary} 
-                                    style={{ 
-                                        fontSize: '16px',
-                                        lineHeight: '1.8'
-                                    }} 
-                                />
+                                <div style={loadingText}>Waiting for data synchronization...</div>
                             )}
                         </div>
 
-                        {!isLoading && summary && (
-                            <div style={{ marginTop: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '16px', borderTop: '1px solid #e2e8f0' }}>
-                                <div style={{ fontSize: '14px', color: '#718096' }}>
-                                    💡 Tip: Use Ctrl+F to search within the summary
-                                </div>
-                                <button
-                                    onClick={handleDownload}
-                                    style={{
-                                        padding: '12px 24px',
-                                        borderRadius: '10px',
-                                        border: 'none',
-                                        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                                        color: 'white',
-                                        fontWeight: '600',
-                                        cursor: 'pointer',
-                                        transition: 'all 0.3s ease',
-                                        fontSize: '16px',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '8px',
-                                        boxShadow: '0 4px 15px rgba(102, 126, 234, 0.4)'
-                                    }}
-                                    onMouseOver={(e) => e.target.style.transform = 'translateY(-2px)'}
-                                    onMouseOut={(e) => e.target.style.transform = 'translateY(0px)'}
-                                >
+                        {/* FOOTER SECTION */}
+                        {!isLoading && data && (
+                            <div style={footerStyle}>
+                                <div style={{ fontSize: '14px', color: '#a0aec0' }}>💡 Generated by AI Copilot</div>
+                                <button onClick={handleDownload} style={downloadBtn}>
                                     📄 Download PDF
                                 </button>
                             </div>
@@ -197,5 +124,67 @@ const SummaryModal = ({ isOpen, onClose, summary, fileName, isLoading }) => {
         </AnimatePresence>
     );
 };
+
+// --- STYLES (ENHANCED FOR HIGH-DENSITY VISUALS) ---
+const overlayStyle = { 
+    position: 'fixed', inset: 0, 
+    backgroundColor: 'rgba(0, 0, 0, 0.75)', 
+    display: 'flex', alignItems: 'center', justifyContent: 'center', 
+    zIndex: 1000010, // Must be higher than PDF Viewer
+    backdropFilter: 'blur(12px)' 
+};
+
+const modalStyle = { 
+    backgroundColor: 'white', borderRadius: '24px', padding: '35px', 
+    width: '92%', maxWidth: '950px', maxHeight: '85vh', 
+    display: 'flex', flexDirection: 'column', 
+    boxShadow: '0 25px 60px rgba(0, 0, 0, 0.6)', 
+    overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)'
+};
+
+const headerStyle = { 
+    display: 'flex', justifyContent: 'space-between', alignItems: 'center', 
+    marginBottom: '24px', borderBottom: '2px solid #f1f5f9', paddingBottom: '20px' 
+};
+
+const titleStyle = { fontSize: '24px', fontWeight: '800', margin: 0, color: '#0f172a' };
+
+const gradientText = { 
+    background: 'linear-gradient(135deg, #6366f1 0%, #a855f7 100%)', 
+    WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' 
+};
+
+const backBtn = { 
+    background: '#f1f5f9', border: '1px solid #e2e8f0', 
+    borderRadius: '10px', padding: '10px 20px', 
+    cursor: 'pointer', fontWeight: '700', color: '#475569',
+    transition: 'all 0.2s'
+};
+
+const contentArea = { 
+    flex: 1, overflowY: 'auto', background: '#ffffff', 
+    borderRadius: '16px', padding: '15px', border: '1px solid #f1f5f9' 
+};
+
+const footerStyle = { 
+    marginTop: '24px', display: 'flex', justifyContent: 'space-between', 
+    alignItems: 'center', paddingTop: '20px', borderTop: '1px solid #f1f5f9' 
+};
+
+const downloadBtn = { 
+    padding: '14px 30px', borderRadius: '14px', border: 'none', 
+    background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)', 
+    color: 'white', fontWeight: '800', cursor: 'pointer', 
+    boxShadow: '0 10px 20px rgba(99, 102, 241, 0.4)' 
+};
+
+const loadingWrapper = { 
+    display: 'flex', justifyContent: 'center', alignItems: 'center', 
+    height: '350px', flexDirection: 'column', gap: '15px' 
+};
+
+const loadingText = { fontSize: '20px', color: '#6366f1', fontWeight: '800' };
+
+const subText = { fontSize: '15px', color: '#64748b', textAlign: 'center', maxWidth: '400px' };
 
 export default SummaryModal;

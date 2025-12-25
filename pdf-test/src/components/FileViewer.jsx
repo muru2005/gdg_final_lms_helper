@@ -1,369 +1,102 @@
-import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import axios from 'axios';
-import ChatBox from './ChatBox';
-import { Document, Page, pdfjs } from "react-pdf";
-import { jsPDF } from "jspdf";
+import React, { useState, useEffect } from 'react';
+import { Document, Page, pdfjs } from 'react-pdf';
 
-pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-    'pdfjs-dist/build/pdf.worker.min.mjs',
-    import.meta.url,
-).toString();
+// Styles for text layer to prevent the "repeating text" bug
+import 'react-pdf/dist/Page/TextLayer.css';
+import 'react-pdf/dist/Page/AnnotationLayer.css';
 
-const BACKEND_URL = 'http://192.168.1.6:5000';
+// AUTOMATIC VERSION SYNC: Ensures library and worker always match
+pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
-const FileViewer = ({ filePath, fileName, fileUrl, onClose, popupMode }) => {
+const FileViewer = ({ fileUrl, fileName, onClose, onOpenSummary, onOpenMindMap, onOpenChat }) => {
     const [numPages, setNumPages] = useState(null);
-    const [showChat, setShowChat] = useState(true);
-    const [loading, setLoading] = useState({ summary: false, mindmap: false });
-    const [showConfirm, setShowConfirm] = useState({ type: '', show: false });
+    const [pdfBlob, setPdfBlob] = useState(null);
+    const [scale, setScale] = useState(1.0);
+    const [error, setError] = useState(null);
 
-    // View State
-    const [currentView, setCurrentView] = useState('file'); // 'file', 'summary', 'mindmap'
-    const [generatedPdfs, setGeneratedPdfs] = useState({ summary: null, mindmap: null });
-
-    // Store original file URL
-    const [modalFileUrl, setModalFileUrl] = useState(null);
+    // Zoom Handlers
+    const zoomIn = () => setScale(prev => Math.min(prev + 0.2, 2.0));
+    const zoomOut = () => setScale(prev => Math.max(prev - 0.2, 0.5));
 
     useEffect(() => {
-        if (fileUrl) {
-            setModalFileUrl(fileUrl);
-        }
-    }, [fileUrl]);
-
-    // Helper to generate PDF from text (Summary)
-    const generateSummaryPdf = (text) => {
-        const doc = new jsPDF();
-
-        doc.setFontSize(16);
-        doc.text("Document Summary", 20, 20);
-
-        doc.setFontSize(12);
-        const splitText = doc.splitTextToSize(text, 170);
-        let y = 30;
-
-        splitText.forEach(line => {
-            if (y > 280) {
-                doc.addPage();
-                y = 20;
-            }
-            doc.text(line, 20, y);
-            y += 7;
-        });
-
-        return doc.output('bloburl');
-    };
-
-    // Helper to generate PDF from JSON MindMap
-    const generateMindMapPdf = (data) => {
-        const doc = new jsPDF();
-
-        doc.setFontSize(16);
-        doc.text("Mind Map Outline", 20, 20);
-
-        doc.setFontSize(11);
-        let y = 30;
-
-        const renderNode = (node, level = 0) => {
-            if (!node) return;
-
-            if (y > 280) {
-                doc.addPage();
-                y = 20;
-            }
-
-            const indent = 20 + (level * 10);
-            const prefix = level === 0 ? "• " : "◦ ";
-            const text = `${prefix}${node.title}`;
-
-            // Handle long text wrapping
-            const maxLineWidth = 170 - (level * 10);
-            const splitLines = doc.splitTextToSize(text, maxLineWidth);
-
-            splitLines.forEach((line, idx) => {
-                if (y > 280) {
-                    doc.addPage();
-                    y = 20;
-                }
-                const xPos = idx === 0 ? indent : indent + 5;
-                doc.text(line, xPos, y);
-                y += 6;
-            });
-
-            if (node.children && node.children.length > 0) {
-                node.children.forEach(child => renderNode(child, level + 1));
+        const loadPdf = async () => {
+            try {
+                const response = await fetch(fileUrl);
+                if (!response.ok) throw new Error("LMS Fetch Failed");
+                const blob = await response.blob();
+                const localUrl = URL.createObjectURL(blob);
+                setPdfBlob(localUrl);
+            } catch (err) {
+                console.error("PDF Load Failure:", err);
+                setError("Security Block: Could not load PDF from LMS.");
             }
         };
+        loadPdf();
+        return () => { if (pdfBlob) URL.revokeObjectURL(pdfBlob); };
+    }, [fileUrl]);
 
-        if (data.title) {
-            renderNode(data, 0);
-        }
-
-        return doc.output('bloburl');
-    };
-
-    const handleSummary = async () => {
-        // If we already have it, just switch view
-        if (generatedPdfs.summary) {
-            setCurrentView('summary');
-            return;
-        }
-        setShowConfirm({ type: 'summary', show: true });
-    };
-
-    const handleMindMap = async () => {
-        // If we already have it, just switch view
-        if (generatedPdfs.mindmap) {
-            setCurrentView('mindmap');
-            return;
-        }
-        setShowConfirm({ type: 'mindmap', show: true });
-    };
-
-    const handleOriginalFile = () => {
-        setCurrentView('file');
-    }
-
-    const generateContent = async () => {
-        const type = showConfirm.type;
-        setLoading({ ...loading, [type]: true });
-        setShowConfirm({ type: '', show: false });
-
-        try {
-            let content = '';
-            if (fileUrl) {
-                const response = await fetch(fileUrl);
-                content = await response.text();
-            }
-
-            // 1. Generate Summary first (needed for both)
-            let summaryText = '';
-            // We optimize by checking if we have summary, but for simplicity let's just hit the endpoint if needed
-            // Actually, let's reuse the summary endpoint logic
-            const summaryResponse = await axios.post(`${BACKEND_URL}/generate-summary`, {
-                text: content,
-                file_path: filePath // Optional, helps with caching
-            });
-            summaryText = summaryResponse.data.summary;
-
-            if (type === 'summary') {
-                const url = generateSummaryPdf(summaryText);
-                setGeneratedPdfs(prev => ({ ...prev, summary: url }));
-                setCurrentView('summary');
-            } else if (type === 'mindmap') {
-                // 2. Generate Mindmap from summary
-                const mmResponse = await axios.post(`${BACKEND_URL}/generate-mindmap`, {
-                    summary: summaryText
-                });
-                const url = generateMindMapPdf(mmResponse.data);
-                setGeneratedPdfs(prev => ({ ...prev, mindmap: url }));
-                setCurrentView('mindmap');
-            }
-
-        } catch (error) {
-            console.error(`Error generating ${type}:`, error);
-        } finally {
-            setLoading({ ...loading, [type]: false });
-        }
-    };
-
-    // Determine which URL to show
-    const getDisplayUrl = () => {
-        switch (currentView) {
-            case 'summary': return generatedPdfs.summary;
-            case 'mindmap': return generatedPdfs.mindmap;
-            default: return modalFileUrl;
-        }
-    };
+    if (error) return <div style={errOverlay}>{error} <button onClick={onClose} style={toolBtn}>✕ Close</button></div>;
 
     return (
-        <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-            style={{
-                position: 'fixed',
-                inset: 0,
-                backgroundColor: 'rgba(0, 0, 0, 0.6)',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                zIndex: 1000,
-                overflowY: "auto",
-                backdropFilter: "blur(3px)",
-                padding: '40px'
-            }}
-        >
-            <div style={{ width: '100%', maxWidth: '1280px', display: 'flex', flexDirection: 'column', height: '90vh' }}>
-
-                {/* Header Bar */}
-                <div style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    backgroundColor: 'white',
-                    padding: '15px 25px',
-                    borderRadius: '12px 12px 0 0',
-                    borderBottom: '1px solid #e2e8f0'
-                }}>
-                    <div>
-                        <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 'bold' }}>
-                            {currentView === 'file' ? fileName : currentView === 'summary' ? `Summary: ${fileName}` : `Mind Map: ${fileName}`}
-                        </h2>
+        <div style={overlayStyle} onClick={onClose}>
+            {/* STICKY GLASS HEADER WITH TOOLS */}
+            <div style={headerStyle} onClick={(e) => e.stopPropagation()}>
+                <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
+                    <button onClick={onOpenSummary} style={toolBtn}>📝 Summary</button>
+                    <button onClick={onOpenMindMap} style={toolBtn}>🧠 Mind Map</button>
+                    <button onClick={onOpenChat} style={toolBtn}>💬 Ask AI</button>
+                    
+                    {/* Integrated Zoom Controls */}
+                    <div style={zoomContainer}>
+                        <button onClick={zoomOut} style={zoomBtn}>-</button>
+                        <span style={{ color: 'white', minWidth: '45px', textAlign: 'center', fontSize: '12px' }}>
+                            {Math.round(scale * 100)}%
+                        </span>
+                        <button onClick={zoomIn} style={zoomBtn}>+</button>
                     </div>
-
-                    <div style={{ display: 'flex', gap: '10px' }}>
-                        <button
-                            onClick={handleOriginalFile}
-                            style={{
-                                padding: '8px 16px',
-                                backgroundColor: currentView === 'file' ? '#3b82f6' : '#f3f4f6',
-                                color: currentView === 'file' ? 'white' : '#374151',
-                                border: 'none',
-                                borderRadius: '6px',
-                                cursor: 'pointer',
-                                fontWeight: '500'
-                            }}
-                        >
-                            📄 Original
-                        </button>
-                        <button
-                            onClick={handleSummary}
-                            disabled={loading.summary}
-                            style={{
-                                padding: '8px 16px',
-                                backgroundColor: currentView === 'summary' ? '#8B5CF6' : (loading.summary ? '#e5e7eb' : '#f3f4f6'),
-                                color: currentView === 'summary' ? 'white' : '#374151',
-                                border: 'none',
-                                borderRadius: '6px',
-                                cursor: loading.summary ? 'wait' : 'pointer',
-                                fontWeight: '500'
-                            }}
-                        >
-                            {loading.summary ? '⏳ Generating...' : '📝 Summary'}
-                        </button>
-                        <button
-                            onClick={handleMindMap}
-                            disabled={loading.mindmap}
-                            style={{
-                                padding: '8px 16px',
-                                backgroundColor: currentView === 'mindmap' ? '#10B981' : (loading.mindmap ? '#e5e7eb' : '#f3f4f6'),
-                                color: currentView === 'mindmap' ? 'white' : '#374151',
-                                border: 'none',
-                                borderRadius: '6px',
-                                cursor: loading.mindmap ? 'wait' : 'pointer',
-                                fontWeight: '500'
-                            }}
-                        >
-                            {loading.mindmap ? '⏳ Generating...' : '🧠 Mind Map'}
-                        </button>
-                    </div>
-
-                    <button
-                        onClick={onClose || (() => window.location.hash = '#/')}
-                        style={{
-                            color: '#6b7280',
-                            background: 'none',
-                            border: 'none',
-                            fontSize: '24px',
-                            cursor: 'pointer',
-                            marginLeft: '20px'
-                        }}
-                    >
-                        ✕
-                    </button>
                 </div>
 
-                {/* PDF Viewer Container */}
-                <div
-                    onClick={(e) => e.stopPropagation()}
-                    style={{
-                        flex: 1,
-                        backgroundColor: '#525659',
-                        overflow: 'auto',
-                        display: 'flex',
-                        justifyContent: 'center',
-                        borderRadius: '0 0 12px 12px',
-                        padding: '20px'
-                    }}
-                >
-                    <Document
-                        file={getDisplayUrl()}
-                        onLoadSuccess={({ numPages }) => setNumPages(numPages)}
-                        onLoadError={(error) => console.error("PDF Load Error:", error)}
-                        loading={<div style={{ color: 'white' }}>Loading Document...</div>}
-                    >
-                        {Array.from(new Array(numPages), (_, index) => (
-                            <div key={index} style={{ marginBottom: "15px", boxShadow: "0 5px 15px rgba(0,0,0,0.5)" }}>
-                                <Page pageNumber={index + 1} width={800} renderTextLayer={false} renderAnnotationLayer={false} />
-                            </div>
-                        ))}
-                    </Document>
+                <div style={{ color: 'white', display: 'flex', alignItems: 'center', gap: '20px' }}>
+                    <span style={{ fontWeight: '800', fontSize: '1rem', letterSpacing: '0.5px' }}>{fileName}</span>
+                    <button onClick={onClose} style={closeIcon}>✕</button>
                 </div>
             </div>
 
-            {/* Confirmation Modal */}
-            {showConfirm.show && (
-                <div style={{
-                    position: 'fixed',
-                    inset: 0,
-                    backgroundColor: 'rgba(0,0,0,0.5)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    zIndex: 2500
-                }}>
-                    <div style={{
-                        backgroundColor: 'white',
-                        padding: '24px',
-                        borderRadius: '12px',
-                        maxWidth: '400px',
-                        textAlign: 'center'
-                    }}>
-                        <h3>Generate {showConfirm.type === 'summary' ? 'Summary' : 'Mind Map'}?</h3>
-                        <p style={{ color: '#666', margin: '16px 0' }}>
-                            This will analyze the file and generate a {showConfirm.type} PDF. This may take a moment.
-                        </p>
-                        <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
-                            <button
-                                onClick={() => setShowConfirm({ type: '', show: false })}
-                                style={{
-                                    padding: '8px 16px',
-                                    backgroundColor: '#6B7280',
-                                    color: 'white',
-                                    border: 'none',
-                                    borderRadius: '6px',
-                                    cursor: 'pointer'
-                                }}
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                onClick={generateContent}
-                                style={{
-                                    padding: '8px 16px',
-                                    backgroundColor: '#007AFF',
-                                    color: 'white',
-                                    border: 'none',
-                                    borderRadius: '6px',
-                                    cursor: 'pointer'
-                                }}
-                            >
-                                Generate
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Chat Component - Always visible on top */}
-            <ChatBox
-                isOpen={showChat}
-                onClose={() => setShowChat(false)}
-                filePath={filePath}
-            />
-        </motion.div>
+            {/* SCROLLABLE CONTENT AREA */}
+            <div style={pdfScrollArea} onClick={(e) => e.stopPropagation()}>
+                {pdfBlob && (
+                    <Document 
+                        file={pdfBlob} 
+                        onLoadSuccess={({ numPages }) => setNumPages(numPages)}
+                        loading={<div style={{color:'white', fontSize:'1.2rem'}}>⚡ Syncing with AI Workspace...</div>}
+                    >
+                        {Array.from(new Array(numPages), (_, i) => (
+                            <div key={i} style={pageShadow}>
+                                <Page 
+                                    pageNumber={i + 1} 
+                                    scale={scale}
+                                    width={Math.min(window.innerWidth * 0.85, 950)} 
+                                    renderTextLayer={true} // Enabled for text selection
+                                    renderAnnotationLayer={false} // Disabled to prevent ghost text
+                                />
+                            </div>
+                        ))}
+                    </Document>
+                )}
+            </div>
+        </div>
     );
 };
+
+// --- GMAIL-STYLE INTEGRATED STYLES ---
+const overlayStyle = { position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.96)', zIndex: 999999, overflowY: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', backdropFilter: 'blur(15px)' };
+const headerStyle = { width: '100%', padding: '12px 40px', display: 'flex', justifyContent: 'space-between', backgroundColor: 'rgba(255, 255, 255, 0.05)', backdropFilter: 'blur(25px)', position: 'sticky', top: 0, zIndex: 1000, borderBottom: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 4px 30px rgba(0,0,0,0.4)' };
+const toolBtn = { padding: '8px 16px', borderRadius: '20px', border: 'none', cursor: 'pointer', fontWeight: 'bold', backgroundColor: '#fff', color: '#1e293b', transition: 'all 0.2s' };
+const zoomContainer = { display: 'flex', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: '20px', padding: '2px 8px', marginLeft: '10px' };
+const zoomBtn = { background: 'none', border: 'none', color: 'white', fontSize: '18px', cursor: 'pointer', padding: '0 8px' };
+const pdfScrollArea = { marginTop: '30px', paddingBottom: '120px' };
+const pageShadow = { marginBottom: '40px', boxShadow: '0 30px 60px rgba(0,0,0,0.7)', borderRadius: '4px', overflow: 'hidden', backgroundColor: 'white' };
+const closeIcon = { background: 'none', border: 'none', color: 'white', fontSize: '30px', cursor: 'pointer', opacity: '0.8' };
+const errOverlay = { position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', background: '#0f172a', color: 'white', zIndex: 1000000 };
 
 export default FileViewer;
