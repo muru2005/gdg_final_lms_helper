@@ -4,6 +4,7 @@ import re
 import json
 import base64
 import time
+import socket  # Added for LAN IP detection
 import requests
 from flask import Flask, request, jsonify
 from flask_cors import CORS
@@ -33,6 +34,21 @@ embedding_function = embedding_functions.SentenceTransformerEmbeddingFunction(
 
 # In-Memory Cache for Session Data
 PROCESSED_FILES = {}
+
+# --- NEW LAN IP HELPER ---
+
+def get_lan_ip():
+    """Dynamically finds the local network IP of this machine"""
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        # This doesn't actually need to reach the IP
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+    except Exception:
+        ip = "127.0.0.1"
+    finally:
+        s.close()
+    return ip
 
 # --- HELPER FUNCTIONS ---
 
@@ -212,5 +228,11 @@ def chat():
 
 # 4. RUN SERVER
 if __name__ == '__main__':
+    current_ip = get_lan_ip()
+    print("\n" + "="*50)
+    print(f"🚀 SERVER RUNNING AT: http://{current_ip}:5000")
+    print(f"📡 Update your background.js BACKEND_URL to this IP!")
+    print("="*50 + "\n")
+    
     # 0.0.0.0 allows connection from extension
     app.run(host='0.0.0.0', port=5000, debug=True)

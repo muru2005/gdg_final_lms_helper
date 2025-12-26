@@ -12,48 +12,60 @@ const AIViewer = () => {
     const [showMindMap, setShowMindMap] = useState(false);
     const [chatOpen, setChatOpen] = useState(false);
     
-    // AI Data States: These hold the results from your Flask 200 responses
+    // AI Data States: Results from your Flask server
     const [summaryData, setSummaryData] = useState(null);
     const [mindMapData, setMindMapData] = useState(null);
     const [isProcessing, setIsProcessing] = useState(false);
 
     useEffect(() => {
-        // 1. Initial Load: Get the file data saved by the background script
+        // 1. Initial Load: Get the file data saved by background.jsx
         chrome.storage.local.get(['currentFile'], (result) => {
-            if (result.currentFile) setCurrentFile(result.currentFile);
+            if (result.currentFile) {
+                console.log("[AIViewer] Loading File:", result.currentFile.name);
+                setCurrentFile(result.currentFile);
+            }
         });
 
-        // 2. THE DATA BRIDGE: Listens for AI results pushed from background.jsx
+        // 2. THE DATA BRIDGE: Listen for Flask results pushed from background.jsx
         const messageListener = (request) => {
             if (request.action === 'RECEIVE_GENERATE_SUMMARY') {
-                console.log("[AIViewer] Summary Payload Received:", request.payload);
-                setSummaryData(request.payload.summary); // Update state for SummaryModal
+                console.log("[AIViewer] Summary Received");
+                setSummaryData(request.payload.summary);
                 setIsProcessing(false);
             }
             if (request.action === 'RECEIVE_GENERATE_MINDMAP') {
-                console.log("[AIViewer] MindMap Payload Received:", request.payload);
-                setMindMapData(request.payload); // Update state for MindMap
+                console.log("[AIViewer] MindMap Received");
+                setMindMapData(request.payload);
                 setIsProcessing(false);
             }
         };
 
         chrome.runtime.onMessage.addListener(messageListener);
+        
+        // Cleanup listener on unmount
         return () => chrome.runtime.onMessage.removeListener(messageListener);
     }, []);
 
-    // Cleanup storage and local state when the viewer is closed
+    // 3. CLOSE HANDLER: Wipes state and hides the overlay
     const handleClose = () => {
         setCurrentFile(null);
         setSummaryData(null);
         setMindMapData(null);
+        setIsProcessing(false);
         chrome.storage.local.remove('currentFile');
+
+        // Force hide the physical container injected by content.jsx
+        const container = document.getElementById('lms-helper-integrated-overlay');
+        if (container) {
+            container.style.display = 'none';
+        }
     };
 
-    // --- TOOL TRIGGER HANDLERS: Tells background to call Flask ---
+    // --- TOOL TRIGGER HANDLERS ---
 
     const triggerSummary = () => {
         const filePath = currentFile.fileUrl || currentFile.url;
-        setSummaryData(null); // Reset old data
+        setSummaryData(null); // Clear old results
         setIsProcessing(true);
         setShowSummary(true);
         chrome.runtime.sendMessage({ 
@@ -64,7 +76,7 @@ const AIViewer = () => {
 
     const triggerMindMap = () => {
         const filePath = currentFile.fileUrl || currentFile.url;
-        setMindMapData(null); // Reset old data
+        setMindMapData(null); // Clear old results
         setIsProcessing(true);
         setShowMindMap(true);
         chrome.runtime.sendMessage({ 
@@ -79,6 +91,19 @@ const AIViewer = () => {
 
     return (
         <div style={mainContainerStyle}>
+            {/* Global Animation Styles */}
+            <style>
+                {`
+                    @keyframes lms-spin {
+                        from { transform: rotate(0deg); }
+                        to { transform: rotate(360deg); }
+                    }
+                    .lms-loading-spinner {
+                        animation: lms-spin 0.8s linear infinite;
+                    }
+                `}
+            </style>
+
             {/* 1. BASE LAYER: High-end PDF Viewer */}
             <FileViewer 
                 fileUrl={filePath} 
@@ -89,7 +114,7 @@ const AIViewer = () => {
                 onClose={handleClose}
             />
 
-            {/* 2. SUMMARY MODAL: Receives summaryData prop */}
+            {/* 2. SUMMARY MODAL */}
             <SummaryModal 
                 isOpen={showSummary} 
                 data={summaryData} 
@@ -98,7 +123,7 @@ const AIViewer = () => {
                 onClose={() => setShowSummary(false)} 
             />
 
-            {/* 3. MIND MAP: Uses D3 to render mindMapData prop */}
+            {/* 3. MIND MAP */}
             <AnimatePresence>
                 {showMindMap && (
                     <MindMap 
@@ -110,17 +135,17 @@ const AIViewer = () => {
                 )}
             </AnimatePresence>
 
-            {/* 4. CHAT BOX: Direct communication for Ask AI */}
+            {/* 4. CHAT BOX */}
             <ChatBox 
                 isOpen={chatOpen} 
                 filePath={filePath} 
                 onClose={() => setChatOpen(false)} 
             />
 
-            {/* 5. GLOBAL LOADER: Visible while AI is thinking */}
+            {/* 5. GLOBAL TOAST LOADER */}
             {isProcessing && (
                 <div style={toastStyle}>
-                    <div style={spinnerStyle}></div>
+                    <div className="lms-loading-spinner" style={spinnerStyle}></div>
                     <span style={{fontWeight: 'bold'}}>Llama-3 is architecting insights...</span>
                 </div>
             )}
@@ -128,11 +153,15 @@ const AIViewer = () => {
     );
 };
 
-// --- STYLES (Verified Z-Index Stack) ---
+// --- STYLES ---
 const mainContainerStyle = { 
-    width: '100vw', height: '100vh', 
-    position: 'relative', 
-    zIndex: 999999 // Base for the entire overlay workspace
+    width: '100vw', 
+    height: '100vh', 
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    backgroundColor: '#f8fafc',
+    zIndex: 999999 
 };
 
 const toastStyle = {
@@ -140,7 +169,7 @@ const toastStyle = {
     backgroundColor: '#1e293b', color: 'white', padding: '14px 28px',
     borderRadius: '50px', display: 'flex', alignItems: 'center', gap: '15px',
     boxShadow: '0 20px 40px rgba(0,0,0,0.6)', 
-    zIndex: 1000005, // Higher than individual tool buttons
+    zIndex: 1000005, 
     border: '1px solid rgba(255,255,255,0.1)',
     backdropFilter: 'blur(10px)'
 };
@@ -149,8 +178,7 @@ const spinnerStyle = {
     width: '20px', height: '20px', 
     border: '3px solid rgba(255,255,255,0.2)',
     borderTop: '3px solid #6366f1', 
-    borderRadius: '50%',
-    animation: 'spin 0.8s linear infinite'
+    borderRadius: '50%'
 };
 
 export default AIViewer;

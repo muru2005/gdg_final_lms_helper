@@ -1,6 +1,6 @@
 /* global chrome */
 
-const BACKEND_URL = 'http://192.168.0.3:5000';
+const BACKEND_URL = 'http://192.168.0.2:5000';
 
 // 1. SIDE PANEL SETUP
 chrome.runtime.onInstalled.addListener(() => {
