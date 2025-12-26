@@ -1,6 +1,6 @@
 /* global chrome */
 
-const BACKEND_URL = 'http://192.168.0.2:5000';
+const BACKEND_URL = 'http://10.60.141.123:5000';
 
 // 1. SIDE PANEL SETUP
 chrome.runtime.onInstalled.addListener(() => {
@@ -45,10 +45,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 
   // --- AI TOOLS BRIDGE (Flask Proxy) ---
-  // This handles your Summary, Mindmap, and Chat buttons
-  if (['GENERATE_SUMMARY', 'GENERATE_MINDMAP', 'CHAT'].includes(msg.action)) {
-    const endpoint = msg.action === 'CHAT' ? '/chat' : 
-                   msg.action === 'GENERATE_SUMMARY' ? '/generate-summary' : '/generate-mindmap';
+  // Updated to include GENERATE_QUIZ
+  if (['GENERATE_SUMMARY', 'GENERATE_MINDMAP', 'CHAT', 'GENERATE_QUIZ'].includes(msg.action)) {
+    const endpointMap = {
+        'CHAT': '/chat',
+        'GENERATE_SUMMARY': '/generate-summary',
+        'GENERATE_MINDMAP': '/generate-mindmap',
+        'GENERATE_QUIZ': '/generate-quiz'
+    };
+    
+    const endpoint = endpointMap[msg.action];
     
     fetch(`${BACKEND_URL}${endpoint}`, {
       method: 'POST',

@@ -57,11 +57,10 @@ const injectAIButtons = () => {
                 cursor: 'pointer', zIndex: '10000'
             });
 
-            // FIX: We use 'mousedown' and 'click' with stopPropagation to kill the LMS link behavior
             const handleAction = (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                e.stopImmediatePropagation(); // Kills other listeners on the same button
+                e.stopImmediatePropagation(); 
 
                 const aalink = item.querySelector('a.aalink');
                 const link = aalink?.href;
@@ -69,7 +68,6 @@ const injectAIButtons = () => {
 
                 console.log(`[UI] Hijacked click for ${tool.action}. Preventing redirect...`);
 
-                // STEP 1: Process file
                 safeSendMessage({
                     action: 'AI_TOOL_TRIGGERED', 
                     fileName: cleanName,
@@ -86,14 +84,149 @@ const injectAIButtons = () => {
                 });
             };
 
-            btn.addEventListener('click', handleAction, true); // True = Capture phase (we go first!)
-            btn.addEventListener('mousedown', (e) => e.stopPropagation()); // Prevents Moodle from tracking the click
-            
+            btn.addEventListener('click', handleAction, true);
+            btn.addEventListener('mousedown', (e) => e.stopPropagation());
             btnWrapper.appendChild(btn);
         });
         nameContainer.appendChild(btnWrapper);
     });
 };
+
+// --- START DOWNLOADER LOGIC ---
+
+const extractCourseMaterials = () => {
+    const units = [];
+    const sections = document.querySelectorAll('li.section.main');
+
+    sections.forEach((section) => {
+        const titleEl = section.querySelector('.sectionname');
+        const title = titleEl?.textContent.trim() || "Untitled Section";
+        if (title === 'General') return;
+
+        const materials = [];
+        const modules = section.querySelectorAll('.activity.modtype_resource, .activity.modtype_folder, .activity.modtype_assign, .activity.modtype_quiz');
+
+        modules.forEach(module => {
+            const link = module.querySelector('a.aalink');
+            if (!link) return;
+
+            let type = 'file';
+            if (module.classList.contains('modtype_folder')) type = 'folder';
+            else if (module.classList.contains('modtype_assign')) type = 'assignment';
+            else if (module.classList.contains('modtype_quiz')) type = 'quiz';
+
+            const rawName = link.querySelector('.instancename')?.firstChild?.textContent || link.textContent;
+            materials.push({ name: rawName.trim(), url: link.href, type });
+        });
+
+        if (materials.length > 0) units.push({ title, materials, materialCount: materials.length });
+    });
+    return units;
+};
+
+const downloadAndZip = async (selectedUnits) => {
+    const zip = new JSZip();
+    const courseTitle = document.querySelector('.page-header-headings h1')?.textContent.trim() || 'Course_Content';
+    const folder = zip.folder(courseTitle);
+
+    const btn = document.getElementById('lms-helper-download-btn');
+    const originalText = btn.innerText;
+
+    for (const unit of selectedUnits) {
+        const unitFolder = folder.folder(unit.title);
+        for (const material of unit.materials) {
+            try {
+                let fetchUrl = material.url;
+                if (fetchUrl.includes('mod/resource/view.php')) fetchUrl += '&redirect=1';
+                const response = await fetch(fetchUrl);
+                const blob = await response.blob();
+                
+                let extension = '.pdf';
+                const contentType = response.headers.get('content-type');
+                if (contentType?.includes('powerpoint')) extension = '.pptx';
+                else if (contentType?.includes('word')) extension = '.docx';
+
+                let filename = material.name.replace(/[^a-z0-9]/gi, '_').trim();
+                if (!filename.endsWith(extension)) filename += extension;
+                unitFolder.file(filename, blob);
+            } catch (err) {
+                console.error(`Failed: ${material.name}`, err);
+            }
+        }
+    }
+
+    btn.innerText = "Generating ZIP...";
+    const content = await zip.generateAsync({ type: "blob" });
+    saveAs(content, `${courseTitle}.zip`);
+    btn.innerText = originalText;
+};
+
+const createDownloadModal = (units) => {
+    const overlay = document.createElement('div');
+    Object.assign(overlay.style, {
+        position: 'fixed', inset: '0', backgroundColor: 'rgba(0,0,0,0.5)', zIndex: '20000',
+        display: 'flex', justifyContent: 'center', alignItems: 'center', backdropFilter: 'blur(2px)'
+    });
+
+    const modal = document.createElement('div');
+    Object.assign(modal.style, { backgroundColor: 'white', padding: '24px', borderRadius: '12px', width: '400px', boxShadow: '0 10px 25px rgba(0,0,0,0.2)' });
+    modal.innerHTML = `<h3 style="margin-top:0">Download Manager</h3><p>Select units to ZIP</p><div id="units-list" style="max-height:200px; overflow-y:auto; border:1px solid #eee; margin-bottom:15px;"></div>`;
+    
+    const list = modal.querySelector('#units-list');
+    units.forEach((unit, i) => {
+        const item = document.createElement('div');
+        item.style.padding = '8px';
+        item.innerHTML = `<input type="checkbox" checked id="unit-${i}"> <label for="unit-${i}">${unit.title}</label>`;
+        list.appendChild(item);
+    });
+
+    const btnContainer = document.createElement('div');
+    btnContainer.style.display = 'flex';
+    btnContainer.style.justifyContent = 'flex-end';
+    btnContainer.style.gap = '10px';
+
+    const cancel = document.createElement('button');
+    cancel.innerText = 'Cancel';
+    cancel.onclick = () => overlay.remove();
+
+    const go = document.createElement('button');
+    go.innerText = 'Download ZIP';
+    Object.assign(go.style, { backgroundColor: '#0f6cbf', color: 'white', border: 'none', padding: '8px 15px', borderRadius: '5px', cursor: 'pointer' });
+    
+    go.onclick = () => {
+        const selected = units.filter((_, i) => modal.querySelector(`#unit-${i}`).checked);
+        if (selected.length) downloadAndZip(selected);
+        overlay.remove();
+    };
+
+    btnContainer.appendChild(cancel);
+    btnContainer.appendChild(go);
+    modal.appendChild(btnContainer);
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+};
+
+const injectDownloadButton = () => {
+    const header = document.querySelector('.page-header-headings') || document.querySelector('.header-actions-container');
+    if (!header || document.getElementById('lms-helper-download-btn')) return;
+
+    const btn = document.createElement('button');
+    btn.id = 'lms-helper-download-btn';
+    btn.innerText = "📥 Download Manager";
+    Object.assign(btn.style, {
+        marginLeft: '15px', backgroundColor: '#0f6cbf', color: 'white', border: 'none', 
+        padding: '8px 16px', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold'
+    });
+
+    btn.onclick = () => {
+        const data = extractCourseMaterials();
+        if (data.length) createDownloadModal(data);
+        else alert("No materials found on this page.");
+    };
+    header.appendChild(btn);
+};
+
+// --- END DOWNLOADER LOGIC ---
 
 // 3. EXTRACTION LOGIC
 const extractCourses = () => {
@@ -109,7 +242,7 @@ const extractCourses = () => {
     return courses;
 };
 
-// 4. DEEP SCAN (Fixed: Now handles errors without crashing)
+// 4. DEEP SCAN
 const performDeepScan = async (sendResponse) => {
     const courses = extractCourses();
     try {
@@ -136,7 +269,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         chrome.storage.local.get(['currentFile'], (result) => {
             if (result.currentFile) {
                 if (rootElement) rootElement.style.display = 'block';
-                // Unique key + Date.now() forces a fresh start every time
                 workspaceRoot.render(<AIViewer key={result.currentFile.path + Date.now()} />);
                 sendResponse({ ok: true });
             }
@@ -150,8 +282,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     if (request.action === 'deepExtractAssignments') {
         performDeepScan(sendResponse);
-        return true; // Keep port open for multiple fetches
+        return true; 
     }
 });
 
-setInterval(injectAIButtons, 2000);
+setInterval(() => {
+    injectAIButtons();
+    injectDownloadButton();
+}, 2000);

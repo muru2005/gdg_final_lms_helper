@@ -13,7 +13,14 @@ from groq import Groq
 import chromadb
 from chromadb.utils import embedding_functions
 from dotenv import load_dotenv
+import asyncio
+from google_auth_oauthlib.flow import InstalledAppFlow
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 
+SCOPES = ["https://www.googleapis.com/auth/forms.body"]
 # 1. INITIALIZATION
 load_dotenv()
 app = Flask(__name__)
@@ -225,7 +232,150 @@ def chat():
         return jsonify({"answer": response.choices[0].message.content})
     except Exception as e:
         return jsonify({"answer": f"Error: {str(e)}"}), 200
+async def generate_quiz_questions(text: str):
+    """Generates 5 MCQs using Llama-3 (Groq) with robust JSON extraction"""
+    prompt = f"""
+    Create a quiz based on the following text:
+    {text[:12000]}
+    
+    Generate 5 Multiple Choice Questions (MCQs).
+    OUTPUT ONLY A VALID JSON ARRAY. No intro, no explanation.
+    FORMAT:
+    [
+        {{
+            "question": "Question text here",
+            "options": ["Option A", "Option B", "Option C", "Option D"],
+            "correct_answer": "Option A"
+        }}
+    ]
+    """
+    
+    response = client.chat.completions.create(
+        model="llama-3.1-8b-instant",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.1, # Lower temperature for more stable JSON
+        max_tokens=2000
+    )
+    
+    raw_content = response.choices[0].message.content.strip()
+    
+    try:
+        # --- ROBUST JSON EXTRACTION ---
+        # This finds the actual [...] part even if the AI says "Here is your JSON:"
+        json_match = re.search(r'\[\s*\{.*\}\s*\]', raw_content, re.DOTALL)
+        if json_match:
+            return json.loads(json_match.group(0))
+        
+        # Fallback to cleaning backticks
+        clean_content = re.sub(r'```json|```', '', raw_content).strip()
+        return json.loads(clean_content)
+        
+    except Exception as e:
+        print(f"❌ AI JSON Parse Failed. Raw content: {raw_content[:100]}...")
+        raise Exception(f"AI returned invalid format: {str(e)}")
+    
 
+# --- HELPER: GOOGLE FORM CREATOR (Modified for Smuggled Token) ---
+def create_google_form_quiz(title, questions, access_token):
+    """Creates the Google Form using the smuggled access token from the browser."""
+    # Build service directly from token (No credentials.json needed!)
+    creds = Credentials(token=access_token)
+    service = build("forms", "v1", credentials=creds)
+    
+    # 1. Create the Form Shell
+    form_body = {
+        "info": {
+            "title": title,
+            "documentTitle": title,
+        }
+    }
+    
+    form = service.forms().create(body=form_body).execute()
+    form_id = form["formId"]
+    
+    # 2. Build the Batch Requests List
+    requests_list = []
+    
+    # Setting: Convert to a Quiz
+    requests_list.append({
+        "updateSettings": {
+            "settings": { "quizSettings": { "isQuiz": True } },
+            "updateMask": "quizSettings.isQuiz"
+        }
+    })
+    
+    # Loop through questions and build the JSON structure
+    for index, q in enumerate(questions):
+        # Clean data to ensure correct_answer matches an option exactly
+        cleaned_options = [str(opt).strip() for opt in q['options']]
+        correct_ans = str(q['correct_answer']).strip()
+        
+        # Safety fallback
+        if correct_ans not in cleaned_options:
+            correct_ans = cleaned_options[0]
+
+        question_item = {
+            "createItem": {
+                "item": {
+                    "title": q['question'],
+                    "questionItem": {
+                        "question": {
+                            "required": True,
+                            "grading": {
+                                "pointValue": 1,
+                                "correctAnswers": { "answers": [{"value": correct_ans}] }
+                            },
+                            "choiceQuestion": {
+                                "type": "RADIO",
+                                "options": [{"value": opt} for opt in cleaned_options],
+                                "shuffle": True
+                            }
+                        }
+                    }
+                },
+                "location": { "index": index }
+            }
+        }
+        requests_list.append(question_item)
+    
+    # 3. Execute batch update to add all questions
+    service.forms().batchUpdate(formId=form_id, body={"requests": requests_list}).execute()
+    
+    # Return the URI for users to take the quiz
+    return form.get("responderUri")
+@app.route('/generate-quiz', methods=['POST'])
+def generate_quiz_endpoint():
+    data = request.json
+    file_path = data.get('file_path')
+    access_token = data.get('access_token') 
+
+    if file_path not in PROCESSED_FILES:
+        return jsonify({"error": "No text context found. Click the Eye button first."}), 400
+    
+    if not access_token:
+        return jsonify({"error": "Auth Error: No login token provided."}), 401
+        
+    try:
+        text_to_use = PROCESSED_FILES[file_path]["text"][:15000]
+        
+        # --- SAFER ASYNC EXECUTION FOR FLASK ---
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            questions = loop.run_until_complete(generate_quiz_questions(text_to_use))
+        finally:
+            loop.close()
+        
+        pdf_name = file_path.split('/')[-1] if '/' in file_path else "Material"
+        quiz_title = f"Quiz: {pdf_name}" 
+        
+        form_url = create_google_form_quiz(quiz_title, questions, access_token)
+        
+        return jsonify({"success": True, "formUrl": form_url})
+        
+    except Exception as e:
+        print(f"🔥 Quiz Route Error: {e}")
+        return jsonify({"error": str(e)}), 500
 # 4. RUN SERVER
 if __name__ == '__main__':
     current_ip = get_lan_ip()

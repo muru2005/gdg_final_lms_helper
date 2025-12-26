@@ -1,3 +1,4 @@
+/* global chrome */
 import React, { useState, useEffect } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
 
@@ -8,7 +9,7 @@ import 'react-pdf/dist/Page/AnnotationLayer.css';
 // AUTOMATIC VERSION SYNC: Ensures library and worker always match
 pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
-const FileViewer = ({ fileUrl, fileName, onClose, onOpenSummary, onOpenMindMap, onOpenChat }) => {
+const FileViewer = ({ fileUrl, fileName, onClose, onOpenSummary, onOpenMindMap, onOpenChat, onOpenQuiz }) => {
     const [numPages, setNumPages] = useState(null);
     const [pdfBlob, setPdfBlob] = useState(null);
     const [scale, setScale] = useState(1.0);
@@ -44,6 +45,7 @@ const FileViewer = ({ fileUrl, fileName, onClose, onOpenSummary, onOpenMindMap, 
                 <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
                     <button onClick={onOpenSummary} style={toolBtn}>📝 Summary</button>
                     <button onClick={onOpenMindMap} style={toolBtn}>🧠 Mind Map</button>
+                    <button onClick={onOpenQuiz} style={toolBtn}>🎯 Quiz</button>
                     <button onClick={onOpenChat} style={toolBtn}>💬 Ask AI</button>
                     
                     {/* Integrated Zoom Controls */}
@@ -64,6 +66,7 @@ const FileViewer = ({ fileUrl, fileName, onClose, onOpenSummary, onOpenMindMap, 
 
             {/* SCROLLABLE CONTENT AREA */}
             <div style={pdfScrollArea} onClick={(e) => e.stopPropagation()}>
+                
                 {pdfBlob && (
                     <Document 
                         file={pdfBlob} 
