@@ -1,5 +1,5 @@
 /* global chrome */
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import jsPDF from 'jspdf';
 import { MarkdownRenderer } from '../utils/markdownParser.jsx';
@@ -9,7 +9,8 @@ import { MarkdownRenderer } from '../utils/markdownParser.jsx';
 
 const SummaryModal = ({ isOpen, onClose, data, isLoading, fileName }) => {
     const contentRef = useRef(null);
-
+    const [isSavingToDrive, setIsSavingToDrive] = useState(false);
+    const [saveStatus, setSaveStatus] = useState(null);
     // --- PDF DOWNLOAD LOGIC ---
     const handleDownload = () => {
         if (!data) return;
@@ -66,6 +67,99 @@ const SummaryModal = ({ isOpen, onClose, data, isLoading, fileName }) => {
 
         doc.save(`${fileName || 'document'}-summary.pdf`);
     };
+    const handleShareToDrive = async () => {
+        if (!data) return;
+
+        try {
+            setIsSavingToDrive(true);
+            setSaveStatus(null);
+
+            // Get the access token from Chrome storage
+            chrome.storage.local.get(['sessionToken'], async (res) => {
+                if (!res.sessionToken) {
+                    setSaveStatus({
+                        type: 'error',
+                        message: 'Please log in via the extension side-panel first.'
+                    });
+                    setIsSavingToDrive(false);
+                    return;
+                }
+
+                // Extract title from fileName (remove extension)
+                const title = fileName 
+                    ? fileName.replace(/\.(pdf|docx?|txt)$/i, '') 
+                    : 'Document Summary';
+
+                // Prompt user for subject
+                const subject = prompt(
+                    'Enter the subject/course name for this summary:',
+                    'General'
+                );
+
+                if (!subject) {
+                    setSaveStatus({
+                        type: 'error',
+                        message: 'Subject is required to save to Drive.'
+                    });
+                    setIsSavingToDrive(false);
+                    return;
+                }
+
+                // Prepare the payload
+                const payload = {
+                    summary: {
+                        title: title,
+                        subject: subject.trim(),
+                        summary: data
+                    },
+                    accessToken: res.sessionToken
+                };
+
+                console.log('[SummaryModal] Saving to Drive...', { title, subject });
+
+                // Call the backend endpoint
+                const response = await fetch('http://localhost:5000/api/save-summary', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                const result = await response.json();
+
+                if (response.ok && result.ok) {
+                    setSaveStatus({
+                        type: 'success',
+                        message: `✅ Saved to Google Drive: ${result.fileName || 'Summary'}`
+                    });
+                    console.log('[SummaryModal] Drive link:', result.driveLink);
+                    await navigator.clipboard.writeText(result.driveLink);
+                    alert("Drive link copied to clipboard!");
+                    // Optionally open the Drive link
+                    if (result.driveLink) {
+                        setTimeout(() => {
+                            if (confirm('Open the file in Google Drive?')) {
+                                window.open(result.driveLink, '_blank');
+                            }
+                        }, 1000);
+                    }
+                } else {
+                    throw new Error(result.error || 'Failed to save to Drive');
+                }
+
+                setIsSavingToDrive(false);
+            });
+
+        } catch (error) {
+            console.error('[SummaryModal] Drive save error:', error);
+            setSaveStatus({
+                type: 'error',
+                message: `❌ Error: ${error.message}`
+            });
+            setIsSavingToDrive(false);
+        }
+    };
 
     return (
         <AnimatePresence>
@@ -109,13 +203,38 @@ const SummaryModal = ({ isOpen, onClose, data, isLoading, fileName }) => {
                             )}
                         </div>
 
+                        {/* STATUS MESSAGE */}
+                        {saveStatus && (
+                            <div style={{
+                                ...statusMessageStyle,
+                                backgroundColor: saveStatus.type === 'success' ? '#d4edda' : '#f8d7da',
+                                color: saveStatus.type === 'success' ? '#155724' : '#721c24',
+                                borderColor: saveStatus.type === 'success' ? '#c3e6cb' : '#f5c6cb'
+                            }}>
+                                {saveStatus.message}
+                            </div>
+                        )}
+
                         {/* FOOTER SECTION */}
                         {!isLoading && data && (
                             <div style={footerStyle}>
                                 <div style={{ fontSize: '14px', color: '#a0aec0' }}>💡 Generated by AI Copilot</div>
-                                <button onClick={handleDownload} style={downloadBtn}>
-                                    📄 Download PDF
-                                </button>
+                                <div style={{ display: 'flex', gap: '12px' }}>
+                                    <button 
+                                        onClick={handleShareToDrive} 
+                                        style={{
+                                            ...driveBtn,
+                                            opacity: isSavingToDrive ? 0.6 : 1,
+                                            cursor: isSavingToDrive ? 'not-allowed' : 'pointer'
+                                        }}
+                                        disabled={isSavingToDrive}
+                                    >
+                                        {isSavingToDrive ? '⏳ Saving...' : '📂 Share to Drive'}
+                                    </button>
+                                    <button onClick={handleDownload} style={downloadBtn}>
+                                        📄 Download PDF
+                                    </button>
+                                </div>
                             </div>
                         )}
                     </motion.div>
@@ -176,6 +295,24 @@ const downloadBtn = {
     background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)', 
     color: 'white', fontWeight: '800', cursor: 'pointer', 
     boxShadow: '0 10px 20px rgba(99, 102, 241, 0.4)' 
+};
+
+const driveBtn = { 
+    padding: '14px 30px', borderRadius: '14px', border: 'none', 
+    background: 'linear-gradient(135deg, #34A853 0%, #0F9D58 100%)', 
+    color: 'white', fontWeight: '800', cursor: 'pointer', 
+    boxShadow: '0 10px 20px rgba(52, 168, 83, 0.4)',
+    transition: 'all 0.2s'
+};
+
+const statusMessageStyle = {
+    marginTop: '16px',
+    padding: '12px 20px',
+    borderRadius: '10px',
+    border: '1px solid',
+    fontSize: '14px',
+    fontWeight: '600',
+    textAlign: 'center'
 };
 
 const loadingWrapper = { 
