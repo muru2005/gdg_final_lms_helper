@@ -1,6 +1,6 @@
 /* global chrome */
 
-const BACKEND_URL = 'http://10.60.141.123:5000';
+const BACKEND_URL = 'http://127.0.0.1:5000';
 
 // 1. SIDE PANEL SETUP
 chrome.runtime.onInstalled.addListener(() => {
@@ -38,7 +38,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         headers: { Authorization: `Bearer ${token}` }
       })
       .then(res => res.json())
-      .then(profile => sendResponse({ ok: true, profile: profile }))
+      .then(profile => {
+        console.log('✅ User profile fetched:', profile.email);
+        sendResponse({ ok: true, profile: profile })
+      })
       .catch(err => sendResponse({ ok: false, error: err.message }));
     });
     return true;

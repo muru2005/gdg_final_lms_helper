@@ -229,6 +229,91 @@ const injectDownloadButton = () => {
 // --- END DOWNLOADER LOGIC ---
 
 // 3. EXTRACTION LOGIC
+// 3. USER EMAIL EXTRACTION
+const extractUserEmail = () => {
+    try {
+        // Method 1: Look for email in user menu/profile links
+        const userLinks = document.querySelectorAll('a[href*="user/profile"], a[href*="user/view"], .usermenu a');
+        for (const link of userLinks) {
+            const text = link.textContent || link.getAttribute('title') || '';
+            const emailMatch = text.match(/[\w.-]+@[\w.-]+\.\w+/);
+            if (emailMatch) {
+                const email = emailMatch[0];
+                console.log('Found email in user menu:', email);
+                return { email, name: getUserName() };
+            }
+        }
+
+        // Method 2: Look in usertext/username elements
+        const userText = document.querySelector('.usertext, .username, [data-username]');
+        if (userText) {
+            const emailMatch = userText.textContent.match(/[\w.-]+@[\w.-]+\.\w+/);
+            if (emailMatch) {
+                const email = emailMatch[0];
+                console.log('Found email in user text:', email);
+                return { email, name: getUserName() };
+            }
+        }
+
+        // Method 3: Check page HTML/scripts for email
+        const bodyText = document.body.innerHTML;
+        const emailMatch = bodyText.match(/["']email["']\s*:\s*["']([\w.-]+@[\w.-]+\.\w+)["']/);
+        if (emailMatch) {
+            const email = emailMatch[1];
+            console.log('Found email in page HTML:', email);
+            return { email, name: getUserName() };
+        }
+
+        // Method 4: Look for SSN email pattern specifically
+        const ssnEmailMatch = bodyText.match(/([\w.-]+@ssn\.edu\.in)/);
+        if (ssnEmailMatch) {
+            const email = ssnEmailMatch[1];
+            console.log('Found SSN email:', email);
+            return { email, name: getUserName() };
+        }
+
+        console.warn('Could not extract email from LMS page');
+        return { email: '', name: getUserName() };
+    } catch (error) {
+        console.error('Error extracting email:', error);
+        return { email: '', name: '' };
+    }
+};
+
+const getUserName = () => {
+    try {
+        // Try to extract name from common LMS elements
+        const nameElement = document.querySelector(
+            '.usertext .text, .username, [data-username], .user-name, .fullname'
+        );
+        
+        if (nameElement) {
+            let name = nameElement.textContent.trim();
+            // Remove email if it's part of the name text
+            name = name.replace(/[\w.-]+@[\w.-]+\.\w+/, '').trim();
+            if (name) {
+                console.log('Found user name:', name);
+                return name;
+            }
+        }
+
+        // Try to get from page title or header
+        const pageHeader = document.querySelector('h1, .page-header-headings h1');
+        if (pageHeader) {
+            const text = pageHeader.textContent;
+            if (text && !text.includes('Dashboard') && !text.includes('LMS')) {
+                return text.trim();
+            }
+        }
+
+        return 'Student';
+    } catch (error) {
+        console.error('Error extracting name:', error);
+        return 'Student';
+    }
+};
+
+// 4. COURSE EXTRACTION
 const extractCourses = () => {
     const courses = [];
     const seenIds = new Set();
@@ -242,7 +327,6 @@ const extractCourses = () => {
     return courses;
 };
 
-// 4. DEEP SCAN
 const performDeepScan = async (sendResponse) => {
     const courses = extractCourses();
     try {
@@ -250,11 +334,32 @@ const performDeepScan = async (sendResponse) => {
             try {
                 const html = await fetch(course.link).then(res => res.text());
                 const doc = new DOMParser().parseFromString(html, 'text/html');
-                return Array.from(doc.querySelectorAll('.activity.modtype_assign')).map(item => ({
-                    title: item.querySelector('.instancename')?.textContent.trim(),
-                    courseName: course.title,
-                    url: item.querySelector('a.aalink')?.href
-                }));
+                
+                // Get all assignment items
+                const assigns = Array.from(doc.querySelectorAll('.activity.modtype_assign'));
+                
+                // Filter for PENDING (Not Done) and Extract Due Dates
+                return assigns.filter(item => {
+                    const doneBtn = item.querySelector('button.btn-success');
+                    const isDone = doneBtn?.textContent.trim().includes('Done') || !!item.querySelector('.fa-check');
+                    return !isDone;
+                }).map(item => {
+                    const dateElements = item.querySelectorAll('[data-region="activity-dates"] div');
+                    let dueDate = "No date found";
+                    dateElements.forEach(el => {
+                        if (el.textContent.includes('Due:')) {
+                            dueDate = el.textContent.replace('Due:', '').trim();
+                        }
+                    });
+
+                    return {
+                        id: item.getAttribute('data-id'),
+                        title: item.querySelector('.instancename')?.textContent.trim() || item.getAttribute('data-activityname'),
+                        courseName: course.title,
+                        url: item.querySelector('a.aalink')?.href,
+                        dueDate: dueDate
+                    };
+                });
             } catch (e) { return []; }
         }));
         sendResponse({ success: true, assignments: results.flat() });
@@ -263,19 +368,33 @@ const performDeepScan = async (sendResponse) => {
     }
 };
 
+const checkIfLoggedIn = () => {
+    return !!(
+        document.querySelector('a[href*="logout"]') || 
+        document.querySelector('.usermenu') ||
+        document.querySelector('[data-username]')
+    );
+};
+
 // 5. MESSAGE LISTENER
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    // Show integrated overlay
     if (request.action === 'SHOW_OVERLAY') {
-        chrome.storage.local.get(['currentFile'], (result) => {
-            if (result.currentFile) {
-                if (rootElement) rootElement.style.display = 'block';
-                workspaceRoot.render(<AIViewer key={result.currentFile.path + Date.now()} />);
-                sendResponse({ ok: true });
-            }
-        });
-        return true; 
+        console.log('[Content] Rendering Integrated Workspace...');
+        workspaceRoot.render(<AIViewer />);
+        sendResponse({ success: true });
+        return true;
     }
 
+    // Extract user email
+    if (request.action === 'getUserEmail') {
+        const userInfo = extractUserEmail();
+        console.log('[Content] Extracted user info:', userInfo);
+        sendResponse(userInfo);
+        return true;
+    }
+
+    // Extract courses
     if (request.action === 'extractData') {
         sendResponse({ success: true, courses: extractCourses() });
     }
@@ -286,7 +405,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
 });
 
+// Lifecycle
 setInterval(() => {
     injectAIButtons();
     injectDownloadButton();
 }, 2000);
+console.log('✅ LMS Helper: Immersive Content Script Active');
+console.log('📧 Email extraction enabled for reminder system');

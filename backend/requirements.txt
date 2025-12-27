@@ -15,9 +15,9 @@ numpy
 msgpack<1.1.0
 PyPDF2
 python-multipart
-flask
-flask-cors
 google-auth
 google-auth-oauthlib
 google-auth-httplib2
 google-api-python-client
+reportlab
+firebase-admin
