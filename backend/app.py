@@ -36,6 +36,8 @@ from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from googleapiclient.http import MediaIoBaseUpload
+import io  # Add this if you use io.BytesIO
+from io import BytesIO  # OR add this to use BytesIO directly
 # 1. INITIALIZATION
 load_dotenv()
 app = Flask(__name__)
@@ -483,6 +485,67 @@ def save_summary():
             "ok": False,
             "error": str(e)
         }), 500
+
+@app.route('/api/upload-file-to-drive', methods=['POST'])
+def upload_file_to_drive():
+    data = request.json
+    file_name = data.get('fileName')
+    mime_type = data.get('mimeType')
+    file_data = data.get('fileData') # Base64 string
+    access_token = data.get('accessToken')
+    subject_name = data.get('subject', 'General') # Get subject from frontend
+
+    try:
+        # 1. Decode base64 data
+        raw_bytes = base64.b64decode(file_data)
+        file_io = BytesIO(raw_bytes)
+
+        # 2. Re-use your established credential logic
+        user_tokens = {
+            "access_token": access_token,
+            "refresh_token": None,
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "client_id": os.environ.get("GOOGLE_CLIENT_ID", ""),
+        }
+        # Use the SAME helper as save_summary
+        service = get_drive_service(user_tokens) 
+
+        # 3. Handle Folder Structure (Same logic as save_summary)
+        # This ensures images go into "LMS Summaries -> [Subject]"
+        app_folder_id = get_or_create_folder(service, "LMS Summaries")
+        subject_folder_id = get_or_create_folder(
+            service,
+            subject_name,
+            app_folder_id
+        )
+
+        # 4. Prepare Metadata with Parent Folder
+        file_metadata = {
+            'name': file_name,
+            'parents': [subject_folder_id] # Put it in the subject folder!
+        }
+        
+        media = MediaIoBaseUpload(file_io, mimetype=mime_type, resumable=True)
+
+        # 5. Create file (Binary upload, no conversion)
+        file = service.files().create(
+            body=file_metadata,
+            media_body=media,
+            fields='id, name, webViewLink'
+        ).execute()
+
+        print(f"✅ Successfully saved Image to Drive: {file.get('name')}")
+
+        return jsonify({
+            "ok": True,
+            "driveLink": file.get('webViewLink'),
+            "fileId": file.get('id'),
+            "fileName": file.get("name")
+        })
+    except Exception as e:
+        print(f"🔥 Error uploading image: {str(e)}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
 
 @app.route("/api/verify-drive-token", methods=["POST"])
 def verify_drive_token():

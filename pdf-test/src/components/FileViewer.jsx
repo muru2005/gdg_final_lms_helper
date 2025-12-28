@@ -43,8 +43,7 @@ const FileViewer = ({ fileUrl, fileName, onClose, onOpenSummary, onOpenMindMap, 
             {/* STICKY GLASS HEADER WITH TOOLS */}
             <div style={headerStyle} onClick={(e) => e.stopPropagation()}>
                 <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
-                    <button onClick={onOpenSummary} style={toolBtn}>📝 Summary</button>
-                    <button onClick={onOpenMindMap} style={toolBtn}>🧠 Mind Map</button>
+                   
                     <button onClick={onOpenQuiz} style={toolBtn}>🎯 Quiz</button>
                     <button onClick={onOpenChat} style={toolBtn}>💬 Ask AI</button>
                     

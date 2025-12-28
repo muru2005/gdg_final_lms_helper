@@ -42,9 +42,9 @@ const injectAIButtons = () => {
         });
 
         const tools = [
-            { label: '👁️', color: '#4f46e5', action: 'OPEN_FILE_VIEWER' },
-            { label: '🧠', color: '#0891b2', action: 'GENERATE_MINDMAP' },
-            { label: '📄', color: '#059669', action: 'GENERATE_SUMMARY' }
+            { label: '👁️', color: '#4f46e5', action: 'OPEN_FILE_VIEWER', tool: 'VIEW' },
+            { label: '🧠', color: '#0891b2', action: 'GENERATE_MINDMAP', tool: 'MINDMAP' },
+            { label: '📄', color: '#059669', action: 'GENERATE_SUMMARY', tool: 'SUMMARY' }
         ];
 
         tools.forEach(tool => {
@@ -67,21 +67,12 @@ const injectAIButtons = () => {
                 const cleanName = item.querySelector('.instancename')?.textContent.replace(/File|Assignment/gi, '').trim(); 
 
                 console.log(`[UI] Hijacked click for ${tool.action}. Preventing redirect...`);
-
-                safeSendMessage({
-                    action: 'AI_TOOL_TRIGGERED', 
-                    fileName: cleanName,
-                    fileUrl: link
-                }, (response) => {
-                    if (response?.ok && (tool.action === 'GENERATE_SUMMARY' || tool.action === 'GENERATE_MINDMAP')) {
-                        setTimeout(() => {
-                            safeSendMessage({
-                                action: tool.action, 
-                                data: { file_path: link }
-                            });
-                        }, 1200); 
-                    }
-                });
+              safeSendMessage({
+        action: 'AI_TOOL_TRIGGERED', 
+        tool: tool.tool, // Should be 'SUMMARY' or 'MINDMAP'
+        fileName: cleanName,
+        fileUrl: link
+    });
             };
 
             btn.addEventListener('click', handleAction, true);

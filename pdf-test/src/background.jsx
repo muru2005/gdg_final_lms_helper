@@ -85,6 +85,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   // --- PDF SMUGGLING (Initial Trigger) ---
   if (msg.action === 'AI_TOOL_TRIGGERED' || msg.action === 'OPEN_FILE_VIEWER') {
     const fileUrl = msg.fileUrl || msg.url;
+    const toolMode = msg.tool || 'VIEW'; // Get the mode from the content script
     
     // Save state so side panel can see what's open
     chrome.storage.local.set({ 
@@ -92,11 +93,18 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             path: fileUrl, 
             name: msg.fileName || msg.name, 
             fileUrl: fileUrl 
-        } 
+        },
+        initialMode: toolMode // Save the mode as well
     }, () => {
         // Render the integrated overlay
         if (sender.tab?.id) {
-            chrome.tabs.sendMessage(sender.tab.id, { action: 'SHOW_OVERLAY' }).catch(() => {});
+          chrome.tabs.sendMessage(sender.tab.id, { action: 'SHOW_OVERLAY' }).catch(() => {}); 
+          // FIX: We must forward the 'tool' so AIViewer knows to switch modes!
+            chrome.tabs.sendMessage(sender.tab.id, { 
+                action: 'AI_TOOL_TRIGGERED', 
+                tool: toolMode,
+                fileUrl: fileUrl
+            }).catch(() => {});
         }
         
         // Smuggle PDF to Flask
