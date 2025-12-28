@@ -35,13 +35,13 @@
     "https://www.googleapis.com/*",
     "http://10.60.141.123:5000/*",
     "http://localhost:5000/*",
-    "http://192.168.1.8:5000/*"
+    "http://192.168.0.2:5000/*"
   ],
   "side_panel": {
     "default_path": "index.html"
   },
   "oauth2": {
-    "client_id": "758127203338-ui7uaed6cbqgbcitc9jjk2h4sg382ra9.apps.googleusercontent.com",
+    "client_id": "758127203338-n0p7v8aq7men1dshnobehtt1806ve9j2.apps.googleusercontent.com",
     "scopes": [
       "https://www.googleapis.com/auth/drive.file",
       "https://www.googleapis.com/auth/userinfo.email",

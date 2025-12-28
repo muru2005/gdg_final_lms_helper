@@ -35,7 +35,7 @@ import secrets
 from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-
+from googleapiclient.http import MediaIoBaseUpload
 # 1. INITIALIZATION
 load_dotenv()
 app = Flask(__name__)
@@ -405,15 +405,8 @@ def generate_quiz_endpoint():
 @app.route("/api/save-summary", methods=["POST"])
 def save_summary():
     """
-    Called when user clicks 'Save Summary'
-    Expects: {
-        "summary": {
-            "title": "...",
-            "subject": "...",
-            "summary": "..."
-        },
-        "accessToken": "..."
-    }
+    Called when user clicks 'Save Summary'.
+    Expects HTML content for high-quality formatting.
     """
     try:
         data = request.get_json()
@@ -424,60 +417,68 @@ def save_summary():
         summary_json = data.get("summary")
         access_token = data.get("accessToken")
         
+        # 1. Validation: We now look for 'content' (the HTML string) instead of 'summary'
         if not summary_json or not access_token:
-            return jsonify({"ok": False, "error": "Missing summary or access token"}), 400
+            return jsonify({"ok": False, "error": "Missing data or access token"}), 400
         
-        # Validate summary data
-        if not all(k in summary_json for k in ["title", "subject", "summary"]):
-            return jsonify({"ok": False, "error": "Invalid summary data"}), 400
-        
-        # Create credentials from access token
+        # Check for our new 'content' key coming from the frontend
+        html_content = summary_json.get("content")
+        if not html_content:
+             return jsonify({"ok": False, "error": "No formatted content provided"}), 400
+
+        # 2. Create credentials from access token
         user_tokens = {
             "access_token": access_token,
-            "refresh_token": None,  # Chrome identity API doesn't provide refresh token
+            "refresh_token": None,
             "token_uri": "https://oauth2.googleapis.com/token",
             "client_id": os.environ.get("GOOGLE_CLIENT_ID", ""),
         }
         
-        # Get Drive service
+        # Get Drive service (Ensure this helper is defined in your app)
         service = get_drive_service(user_tokens)
         
-        # 1. App root folder
+        # 3. Handle Folder Structure
         app_folder_id = get_or_create_folder(service, "LMS Summaries")
-        
-        # 2. Subject folder
         subject_folder_id = get_or_create_folder(
             service,
-            summary_json["subject"],
+            summary_json.get("subject", "General"),
             app_folder_id
         )
         
-        # 3. Create PDF
-        pdf_path = summary_json_to_pdf(summary_json)
+        # 4. Prepare File Metadata for Google Doc Conversion
+        file_metadata = {
+            'name': f"{summary_json.get('title', 'Summary')}.docx",
+            'parents': [subject_folder_id],
+            'mimeType': 'application/vnd.google-apps.document'  # CRITICAL: Forces conversion to Google Doc
+        }
         
-        # 4. Upload PDF
-        file = upload_pdf(
-            service,
-            pdf_path,
-            f"{summary_json['title']}.pdf",
-            subject_folder_id
+        # 5. Create the media object from the HTML string
+        # This tells Google to interpret the HTML tags for bolding, red colors, etc.
+        media = MediaIoBaseUpload(
+            io.BytesIO(html_content.encode('utf-8')),
+            mimetype='text/html',
+            resumable=True
         )
         
-        # Clean up temp file
-        os.remove(pdf_path)
+        # 6. Upload and Convert
+        file = service.files().create(
+            body=file_metadata,
+            media_body=media,
+            fields='id, name, webViewLink'
+        ).execute()
         
+        print(f"✅ Successfully saved formatted Doc: {file.get('name')}")
+
         return jsonify({
             "ok": True,
-            "message": "Saved to Google Drive",
+            "message": "Saved to Google Drive as a formatted Doc",
             "fileId": file["id"],
             "fileName": file.get("name", ""),
             "driveLink": file["webViewLink"]
         })
         
     except Exception as e:
-        print(f"Error saving summary: {str(e)}")
-        import traceback
-        traceback.print_exc()
+        print(f"🔥 Error saving summary: {str(e)}")
         return jsonify({
             "ok": False,
             "error": str(e)

@@ -42,85 +42,59 @@ def get_or_create_folder(service, name, parent_id=None):
     return folder["id"]
 
 
-def summary_json_to_pdf(summary_json: dict) -> str:
+def summary_json_to_pdf(summary_data):
     """
-    Convert summary JSON to PDF and return path
+    Converts summary JSON to a clean PDF without ** or --- symbols.
     """
-    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_auto_page_break(auto=True, margin=15)
     
-    # Create PDF with better formatting
-    c = canvas.Canvas(temp_file.name, pagesize=A4)
-    width, height = A4
+    # 1. Header: Title and Subject
+    pdf.set_font("Arial", 'B', 16)
+    pdf.cell(0, 10, f"Summary: {summary_data.get('title', 'Document')}", ln=True, align='C')
+    pdf.set_font("Arial", 'I', 11)
+    pdf.cell(0, 10, f"Subject: {summary_data.get('subject', 'General')}", ln=True, align='C')
+    pdf.ln(5)
     
-    # Set up fonts
-    c.setFont("Helvetica-Bold", 16)
-    y = height - 40
+    # Draw a clean separator line
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.ln(10)
+
+    # 2. Content Cleaning Logic
+    raw_text = summary_data.get('summary', '')
+
+    # --- REMOVE SHITTY CHARACTERS ---
+    # Remove Bold markers (**)
+    clean_text = raw_text.replace("**", "")
+    # Remove Horizontal line markers (--- or ***)
+    clean_text = re.sub(r'[-*_]{3,}', '', clean_text)
+    # Optional: Clean up list symbols like + to actual bullets
+    clean_text = clean_text.replace("+ ", "• ")
+
+    # 3. Write Content with Proper Spacing
+    pdf.set_font("Arial", size=11)
     
-    # # Title
-    # c.drawString(40, y, "Summary")
-    # y -= 30
-    
-    # Title
-    c.setFont("Helvetica-Bold", 12)
-    c.drawString(40, y, "Title:")
-    c.setFont("Helvetica", 12)
-    c.drawString(100, y, summary_json['title'])
-    y -= 20
-    
-    # Subject
-    c.setFont("Helvetica-Bold", 12)
-    c.drawString(40, y, "Subject:")
-    c.setFont("Helvetica", 12)
-    c.drawString(100, y, summary_json['subject'])
-    y -= 20
-    
-    # Date
-    from datetime import datetime
-    c.setFont("Helvetica-Bold", 12)
-    c.drawString(40, y, "Date:")
-    c.setFont("Helvetica", 12)
-    c.drawString(100, y, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-    y -= 30
-    
-    # Summary content
-    c.setFont("Helvetica-Bold", 12)
-    c.drawString(40, y, "Summary:")
-    y -= 20
-    
-    c.setFont("Helvetica", 11)
-    
-    # Split summary into lines to fit page width
-    summary_text = summary_json['summary']
-    max_width = width - 80  # margins
-    
-    # Wrap text
-    lines = []
-    words = summary_text.split()
-    current_line = []
-    
-    for word in words:
-        test_line = ' '.join(current_line + [word])
-        if c.stringWidth(test_line, "Helvetica", 11) < max_width:
-            current_line.append(word)
-        else:
-            if current_line:
-                lines.append(' '.join(current_line))
-            current_line = [word]
-    
-    if current_line:
-        lines.append(' '.join(current_line))
-    
-    # Draw lines
+    # Split by lines to handle headers and bullets separately
+    lines = clean_text.split('\n')
     for line in lines:
-        if y < 40:  # New page if needed
-            c.showPage()
-            c.setFont("Helvetica", 11)
-            y = height - 40
-        c.drawString(40, y, line)
-        y -= 15
-    
-    c.save()
-    return temp_file.name
+        if not line.strip():
+            pdf.ln(4) # Empty line spacing
+            continue
+            
+        # Check if it looks like a heading (all caps or ending in colon)
+        if line.isupper() or line.strip().endswith(':'):
+            pdf.set_font("Arial", 'B', 11)
+            pdf.multi_cell(0, 8, line.strip())
+            pdf.set_font("Arial", size=11)
+        else:
+            # Regular text with 1.5 line spacing
+            pdf.multi_cell(0, 7, line.strip())
+            
+    # Save to a temp path
+    temp_filename = f"temp_summary_{int(time.time())}.pdf"
+    pdf.output(temp_filename)
+    return temp_filename
 
 def upload_pdf(service, file_path, filename, parent_folder_id):
     """Upload PDF to Google Drive"""

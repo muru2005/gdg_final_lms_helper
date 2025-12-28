@@ -105,12 +105,68 @@ const SummaryModal = ({ isOpen, onClose, data, isLoading, fileName }) => {
                     return;
                 }
 
+                const cleanMarkdownForDocs = (text) => {
+                    if (!text) return "";
+
+    return text
+        .split('\n')
+        .map(line => {
+            let cleaned = line.trim();
+
+            // 1. Aggressively remove nested stars like * ** or **:* or *:
+            // This targets specifically what you see in your provided images
+            cleaned = cleaned.replace(/[\*]{1,3}\s?|\s?[\*]{1,3}/g, ''); 
+            cleaned = cleaned.replace(/[:]{1,}\s?[\*]{1,}/g, ':');
+
+            // 2. Remove stray '+' or '-' used as bullets and prep them for <li>
+            if (cleaned.startsWith('+') || cleaned.startsWith('-')) {
+                return `<li>${cleaned.substring(1).trim()}</li>`;
+            }
+
+            // 3. Detect major section headers (all caps or ending in colon) 
+            // and wrap them in bold tags manually
+            if (cleaned.length > 3 && (cleaned.toUpperCase() === cleaned || cleaned.endsWith(':'))) {
+                return `<p style="margin-top:15px; margin-bottom:5px;"><b>${cleaned}</b></p>`;
+            }
+
+            return cleaned;
+        })
+        .join('\n')
+        // 4. Group adjacent <li> tags into a proper <ul> for Google Doc bullets
+        .replace(/(<li>.*?<\/li>)/gms, '<ul style="margin-bottom:10px;">$1</ul>')
+        // 5. Final cleanup of any remaining Markdown bold remnants
+        .replace(/\*\*/g, '')
+        // 6. Convert newlines to breaks for proper spacing
+        .replace(/\n/g, '<br/>');
+};
+
+    const cleanBody = cleanMarkdownForDocs(data);
+                const formattedHtml = `
+    <html>
+<head>
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; padding: 40px; }
+        h1 { color: #d32f2f; padding-bottom: 10px; font-size: 22pt; }
+        p { margin-bottom: 8px; }
+        li { margin-bottom: 4px; list-style-type: disc; }
+        b { color: #000; }
+    </style>
+</head>
+<body>
+    <h1>${title}</h1>
+    <p><strong>Subject:</strong> ${subject}</p>
+    
+    <div class="content">
+        ${cleanBody} 
+    </div>
+</body>
+</html>`;    
                 // Prepare the payload
-                const payload = {
+     const payload = {
                     summary: {
                         title: title,
                         subject: subject.trim(),
-                        summary: data
+                        content:formattedHtml
                     },
                     accessToken: res.sessionToken
                 };
