@@ -1,6 +1,7 @@
 /* global chrome */
 
-const BACKEND_URL = 'http://10.31.19.228:5000';
+// Ensure this IP matches your current local machine IP running the Flask server
+const BACKEND_URL = 'http://192.168.0.3:5000';
 
 // 1. SIDE PANEL SETUP
 chrome.runtime.onInstalled.addListener(() => {
@@ -16,7 +17,7 @@ chrome.action.onClicked.addListener((tab) => {
 // 2. MAIN MESSAGE LISTENER
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   
-  // --- RESTORED OAUTH & SESSION LOGIC (Verified) ---
+  // --- OAUTH & SESSION LOGIC ---
   if (msg.type === 'getAuthToken') {
     chrome.identity.getAuthToken({ interactive: true }, (token) => {
       if (chrome.runtime.lastError) {
@@ -39,15 +40,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       })
       .then(res => res.json())
       .then(profile => {
-        console.log('✅ User profile fetched:', profile.email);
-        sendResponse({ ok: true, profile: profile })
+        // Save profile to local storage so AIViewer can access the email for Digital ID
+        chrome.storage.local.set({ userProfile: profile });
+        sendResponse({ ok: true, profile: profile });
       })
       .catch(err => sendResponse({ ok: false, error: err.message }));
     });
     return true;
   }
 
-  // --- NEW: DRIVE UPLOAD PROXY (Fixes MindMap Fetch Error) ---
+  // --- DRIVE UPLOAD PROXY ---
   if (msg.action === 'UPLOAD_TO_DRIVE_PROXY') {
     fetch(`${BACKEND_URL}/api/upload-file-to-drive`, {
         method: 'POST',
@@ -60,10 +62,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         console.error("[Background] Drive Proxy Error:", err);
         sendResponse({ ok: false, error: err.message });
     });
-    return true; // Keep channel open for async fetch
+    return true;
   }
 
-  // --- AI TOOLS BRIDGE (Flask Proxy) ---
+  // --- AI TOOLS BRIDGE (Flask Proxy with Cache Awareness) ---
   if (['GENERATE_SUMMARY', 'GENERATE_MINDMAP', 'CHAT', 'GENERATE_QUIZ'].includes(msg.action)) {
     const endpointMap = {
         'CHAT': '/chat',
@@ -81,6 +83,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     })
     .then(res => res.json())
     .then(data => {
+      // If the backend says 'isCached: true', the UI will know it was instant
       if (sender.tab && sender.tab.id) {
           chrome.tabs.sendMessage(sender.tab.id, { 
               action: `RECEIVE_${msg.action}`, 
@@ -90,13 +93,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       sendResponse({ ok: true });
     })
     .catch(err => {
-      console.error("[Background] AI Fetch Error:", err);
+      console.error(`[Background] ${msg.action} Fetch Error:`, err);
       sendResponse({ ok: false, error: err.message });
     });
     return true;
   }
 
-  // --- PDF SMUGGLING (Initial Trigger) ---
+  // --- PDF SMUGGLING & OVERLAY TRIGGER ---
   if (msg.action === 'AI_TOOL_TRIGGERED' || msg.action === 'OPEN_FILE_VIEWER') {
     const fileUrl = msg.fileUrl || msg.url;
     const toolMode = msg.tool || 'VIEW'; 
@@ -109,15 +112,19 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         },
         initialMode: toolMode 
     }, () => {
+        // Notify Content Script to show the overlay
         if (sender.tab?.id) {
-          chrome.tabs.sendMessage(sender.tab.id, { action: 'SHOW_OVERLAY' }).catch(() => {}); 
+            chrome.tabs.sendMessage(sender.tab.id, { action: 'SHOW_OVERLAY' });
+            
+            // Sync the internal state of AIViewer if it's already open
             chrome.tabs.sendMessage(sender.tab.id, { 
                 action: 'AI_TOOL_TRIGGERED', 
                 tool: toolMode,
                 fileUrl: fileUrl
-            }).catch(() => {});
+            });
         }
         
+        // Smuggle PDF to Flask for processing/vectorization
         fetch(fileUrl)
           .then(res => res.arrayBuffer())
           .then(buffer => {
@@ -128,6 +135,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                   body: JSON.stringify({ file_path: fileUrl, pdf_data: base64Data })
               });
           })
+          .then(res => res.json())
+          .then(res => console.log("[Background] File Smuggled:", res.message))
           .catch(e => console.error("[Background] Smuggling failed:", e));
 
         sendResponse({ ok: true });

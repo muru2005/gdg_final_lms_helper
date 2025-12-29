@@ -14,12 +14,15 @@ import chromadb
 from chromadb.utils import embedding_functions
 from dotenv import load_dotenv
 import asyncio
+import time
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-
+import firebase_admin
+from firebase_admin import credentials, firestore
+import hashlib
 SCOPES = ["https://www.googleapis.com/auth/forms.body"]
 from drive import (
     get_drive_service,
@@ -167,19 +170,59 @@ def process_file():
     except Exception as e:
         print(f"🔥 Process Error: {e}")
         return jsonify({"error": str(e)}), 500
+def extract_digital_id(email):
+    match=re.search(r'(\d)@',email)
+    if(match):
+       return match.group(1)
+    return None
+
+def get_file_hash(file_url):
+    """Generates a unique 32-character fingerprint for the file."""
+    return hashlib.md5(file_url.encode('utf-8')).hexdigest()
 
 @app.route('/generate-summary', methods=['POST'])
 def generate_summary():
-    """Generates an extensive academic summary"""
     data = request.json
     file_path = data.get('file_path')
+    user_email = data.get('email', 'unknown@ssn.edu.in')
+    force_refresh = data.get('forceRefresh', False)
+    
+    # --- START WAIT LOGIC ---
+    # Give the background 'process-file' thread time to finish extracting text
+    max_retries = 10 
+    retry_count = 0
+    
+    while file_path not in PROCESSED_FILES and retry_count < max_retries:
+        print(f"⏳ File {file_path} not ready. Waiting... ({retry_count + 1}/{max_retries})")
+        time.sleep(1)  # Wait 1 second before checking again
+        retry_count += 1
     
     if file_path not in PROCESSED_FILES:
-        return jsonify({"error": "Process file first"}), 400
+        print(f"❌ Error: {file_path} failed to process in time.")
+        return jsonify({"error": "File is still being processed. Please wait a moment and try again."}), 400
+    # --- END WAIT LOGIC ---
 
-    if PROCESSED_FILES[file_path].get("summary"):
-        return jsonify({"summary": PROCESSED_FILES[file_path]["summary"]})
+    # 1. Generate IDs
+    file_hash = get_file_hash(file_path)
+    user_id = extract_digital_id(user_email)
 
+    # 2. CACHE CHECK: Look in Firestore 'ai_content' collection
+    doc_ref = db.collection('ai_content').document(file_hash)
+    cached_doc = doc_ref.get()
+
+    # Skip cache check if force_refresh is True
+    if cached_doc.exists and not force_refresh:
+        stored_data = cached_doc.to_dict()
+        if "summary_data" in stored_data:
+            print(f"📦 Cache Hit: Found summary for {file_hash}")
+            return jsonify({
+                "summary": stored_data["summary_data"], 
+                "isCached": True,
+                "status": "success"
+            })
+
+    # 3. AI GENERATION (Cache Miss or Force Refresh)
+    print(f"🤖 AI Generation Started for: {file_hash} (Force: {force_refresh})")
     text_to_use = PROCESSED_FILES[file_path]["text"][:12000] 
     prompt = f"Summarize this document with bold headings and detailed bullets:\n\n{text_to_use}"
     
@@ -190,28 +233,53 @@ def generate_summary():
             temperature=0.3
         )
         summary = response.choices[0].message.content
-        PROCESSED_FILES[file_path]["summary"] = summary
-        return jsonify({"summary": summary})
+        
+        # 4. SAVE TO FIRESTORE: Store for next time
+        doc_ref.set({
+            "summary_data": summary,
+            "topic_name": data.get('fileName', 'LMS Document'),
+            "generated_by_user": user_id,
+            "last_updated": firestore.SERVER_TIMESTAMP
+        }, merge=True)
+
+        return jsonify({
+            "summary": summary, 
+            "isCached": False,
+            "status": "generated"
+        })
     except Exception as e:
+        print(f"🔥 AI Error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/generate-mindmap', methods=['POST'])
 def generate_mindmap():
-    """Generates a deep hierarchical JSON mind map"""
     data = request.json
     file_path = data.get('file_path')
+    user_email = data.get('email', 'unknown@ssn.edu.in')
+    force_refresh = data.get('forceRefresh', False)
     
     if file_path not in PROCESSED_FILES:
         return jsonify({"error": "Process file first"}), 400
 
-    if PROCESSED_FILES[file_path].get("mindmap"):
-        return jsonify(PROCESSED_FILES[file_path]["mindmap"])
+    # 1. Generate IDs
+    file_hash = get_file_hash(file_path)
+    user_id = extract_user_digital_id(user_email)
 
+    # 2. CACHE CHECK
+    doc_ref = db.collection('ai_content').document(file_hash)
+    cached_doc = doc_ref.get()
+
+    if cached_doc.exists and not force_refresh:
+        stored_data = cached_doc.to_dict()
+        if "mindmap_data" in stored_data:
+            print(f"📦 Cache Hit: Found MindMap for {file_hash}")
+            return jsonify(stored_data["mindmap_data"])
+
+    # 3. AI GENERATION
     content = PROCESSED_FILES[file_path].get("summary") or PROCESSED_FILES[file_path]["text"][:10000]
     prompt = f"""
     Return ONLY valid JSON for a mindmap (title/children) based on this:
     {content}
-    
     Rule: Deep nesting (5+ levels). No conversation, just JSON.
     """
 
@@ -225,7 +293,15 @@ def generate_mindmap():
         json_match = re.search(r'\{.*\}', raw, re.DOTALL)
         if json_match:
             parsed = json.loads(json_match.group(0))
-            PROCESSED_FILES[file_path]["mindmap"] = parsed
+            
+            # 4. SAVE TO FIRESTORE
+            doc_ref.set({
+                "mindmap_data": parsed,
+                "topic_name": data.get('fileName', 'LMS Document'),
+                "generated_by_user": user_id,
+                "last_updated": firestore.SERVER_TIMESTAMP
+            }, merge=True)
+            
             return jsonify(parsed)
         return jsonify({"error": "AI failed to build JSON"}), 500
     except Exception as e:
@@ -1029,8 +1105,12 @@ def trigger_reminders():
     result = send_assignment_reminders()
     return jsonify(result), 200 if result.get("success") else 500
 
+
+
+
 # 4. RUN SERVER
 if __name__ == '__main__':
+    
     current_ip = get_lan_ip()
     print("\n" + "="*50)
     print(f"🚀 SERVER RUNNING AT: http://{current_ip}:5000")

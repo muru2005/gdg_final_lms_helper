@@ -10,11 +10,17 @@ let rootElement = document.getElementById('lms-helper-integrated-overlay');
 if (!rootElement) {
     rootElement = document.createElement('div');
     rootElement.id = 'lms-helper-integrated-overlay';
+    Object.assign(rootElement.style, {
+        display: 'none',
+        position: 'fixed',
+        inset: 0,
+        zIndex: 999999
+    });
     document.body.appendChild(rootElement);
 }
 const workspaceRoot = createRoot(rootElement);
 
-// HELPER: Safe messaging to prevent "Port Closed" crashes
+// HELPER: Safe messaging
 const safeSendMessage = (msg, callback) => {
     if (chrome.runtime?.id) {
         chrome.runtime.sendMessage(msg, (res) => {
@@ -66,13 +72,12 @@ const injectAIButtons = () => {
                 const link = aalink?.href;
                 const cleanName = item.querySelector('.instancename')?.textContent.replace(/File|Assignment/gi, '').trim(); 
 
-                console.log(`[UI] Hijacked click for ${tool.action}. Preventing redirect...`);
-              safeSendMessage({
-        action: 'AI_TOOL_TRIGGERED', 
-        tool: tool.tool, // Should be 'SUMMARY' or 'MINDMAP'
-        fileName: cleanName,
-        fileUrl: link
-    });
+                safeSendMessage({
+                    action: 'AI_TOOL_TRIGGERED', 
+                    tool: tool.tool, 
+                    fileName: cleanName,
+                    fileUrl: link
+                });
             };
 
             btn.addEventListener('click', handleAction, true);
@@ -83,33 +88,26 @@ const injectAIButtons = () => {
     });
 };
 
-// --- START DOWNLOADER LOGIC ---
-
+// --- DOWNLOADER LOGIC ---
 const extractCourseMaterials = () => {
     const units = [];
     const sections = document.querySelectorAll('li.section.main');
-
     sections.forEach((section) => {
         const titleEl = section.querySelector('.sectionname');
         const title = titleEl?.textContent.trim() || "Untitled Section";
         if (title === 'General') return;
-
         const materials = [];
         const modules = section.querySelectorAll('.activity.modtype_resource, .activity.modtype_folder, .activity.modtype_assign, .activity.modtype_quiz');
-
         modules.forEach(module => {
             const link = module.querySelector('a.aalink');
             if (!link) return;
-
             let type = 'file';
             if (module.classList.contains('modtype_folder')) type = 'folder';
             else if (module.classList.contains('modtype_assign')) type = 'assignment';
             else if (module.classList.contains('modtype_quiz')) type = 'quiz';
-
             const rawName = link.querySelector('.instancename')?.firstChild?.textContent || link.textContent;
             materials.push({ name: rawName.trim(), url: link.href, type });
         });
-
         if (materials.length > 0) units.push({ title, materials, materialCount: materials.length });
     });
     return units;
@@ -119,7 +117,6 @@ const downloadAndZip = async (selectedUnits) => {
     const zip = new JSZip();
     const courseTitle = document.querySelector('.page-header-headings h1')?.textContent.trim() || 'Course_Content';
     const folder = zip.folder(courseTitle);
-
     const btn = document.getElementById('lms-helper-download-btn');
     const originalText = btn.innerText;
 
@@ -131,21 +128,16 @@ const downloadAndZip = async (selectedUnits) => {
                 if (fetchUrl.includes('mod/resource/view.php')) fetchUrl += '&redirect=1';
                 const response = await fetch(fetchUrl);
                 const blob = await response.blob();
-                
                 let extension = '.pdf';
                 const contentType = response.headers.get('content-type');
                 if (contentType?.includes('powerpoint')) extension = '.pptx';
                 else if (contentType?.includes('word')) extension = '.docx';
-
                 let filename = material.name.replace(/[^a-z0-9]/gi, '_').trim();
                 if (!filename.endsWith(extension)) filename += extension;
                 unitFolder.file(filename, blob);
-            } catch (err) {
-                console.error(`Failed: ${material.name}`, err);
-            }
+            } catch (err) { console.error(`Failed: ${material.name}`, err); }
         }
     }
-
     btn.innerText = "Generating ZIP...";
     const content = await zip.generateAsync({ type: "blob" });
     saveAs(content, `${courseTitle}.zip`);
@@ -158,11 +150,9 @@ const createDownloadModal = (units) => {
         position: 'fixed', inset: '0', backgroundColor: 'rgba(0,0,0,0.5)', zIndex: '20000',
         display: 'flex', justifyContent: 'center', alignItems: 'center', backdropFilter: 'blur(2px)'
     });
-
     const modal = document.createElement('div');
     Object.assign(modal.style, { backgroundColor: 'white', padding: '24px', borderRadius: '12px', width: '400px', boxShadow: '0 10px 25px rgba(0,0,0,0.2)' });
     modal.innerHTML = `<h3 style="margin-top:0">Download Manager</h3><p>Select units to ZIP</p><div id="units-list" style="max-height:200px; overflow-y:auto; border:1px solid #eee; margin-bottom:15px;"></div>`;
-    
     const list = modal.querySelector('#units-list');
     units.forEach((unit, i) => {
         const item = document.createElement('div');
@@ -170,45 +160,27 @@ const createDownloadModal = (units) => {
         item.innerHTML = `<input type="checkbox" checked id="unit-${i}"> <label for="unit-${i}">${unit.title}</label>`;
         list.appendChild(item);
     });
-
     const btnContainer = document.createElement('div');
-    btnContainer.style.display = 'flex';
-    btnContainer.style.justifyContent = 'flex-end';
-    btnContainer.style.gap = '10px';
-
-    const cancel = document.createElement('button');
-    cancel.innerText = 'Cancel';
-    cancel.onclick = () => overlay.remove();
-
-    const go = document.createElement('button');
-    go.innerText = 'Download ZIP';
+    btnContainer.style.display = 'flex'; btnContainer.style.justifyContent = 'flex-end'; btnContainer.style.gap = '10px';
+    const cancel = document.createElement('button'); cancel.innerText = 'Cancel'; cancel.onclick = () => overlay.remove();
+    const go = document.createElement('button'); go.innerText = 'Download ZIP';
     Object.assign(go.style, { backgroundColor: '#0f6cbf', color: 'white', border: 'none', padding: '8px 15px', borderRadius: '5px', cursor: 'pointer' });
-    
     go.onclick = () => {
         const selected = units.filter((_, i) => modal.querySelector(`#unit-${i}`).checked);
         if (selected.length) downloadAndZip(selected);
         overlay.remove();
     };
-
-    btnContainer.appendChild(cancel);
-    btnContainer.appendChild(go);
-    modal.appendChild(btnContainer);
-    overlay.appendChild(modal);
+    btnContainer.appendChild(cancel); btnContainer.appendChild(go);
+    modal.appendChild(btnContainer); overlay.appendChild(modal);
     document.body.appendChild(overlay);
 };
 
 const injectDownloadButton = () => {
     const header = document.querySelector('.page-header-headings') || document.querySelector('.header-actions-container');
     if (!header || document.getElementById('lms-helper-download-btn')) return;
-
     const btn = document.createElement('button');
-    btn.id = 'lms-helper-download-btn';
-    btn.innerText = "📥 Download Manager";
-    Object.assign(btn.style, {
-        marginLeft: '15px', backgroundColor: '#0f6cbf', color: 'white', border: 'none', 
-        padding: '8px 16px', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold'
-    });
-
+    btn.id = 'lms-helper-download-btn'; btn.innerText = "📥 Download Manager";
+    Object.assign(btn.style, { marginLeft: '15px', backgroundColor: '#0f6cbf', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' });
     btn.onclick = () => {
         const data = extractCourseMaterials();
         if (data.length) createDownloadModal(data);
@@ -217,94 +189,21 @@ const injectDownloadButton = () => {
     header.appendChild(btn);
 };
 
-// --- END DOWNLOADER LOGIC ---
-
-// 3. EXTRACTION LOGIC
-// 3. USER EMAIL EXTRACTION
+// --- DATA EXTRACTION ---
 const extractUserEmail = () => {
     try {
-        // Method 1: Look for email in user menu/profile links
-        const userLinks = document.querySelectorAll('a[href*="user/profile"], a[href*="user/view"], .usermenu a');
-        for (const link of userLinks) {
-            const text = link.textContent || link.getAttribute('title') || '';
-            const emailMatch = text.match(/[\w.-]+@[\w.-]+\.\w+/);
-            if (emailMatch) {
-                const email = emailMatch[0];
-                console.log('Found email in user menu:', email);
-                return { email, name: getUserName() };
-            }
-        }
-
-        // Method 2: Look in usertext/username elements
-        const userText = document.querySelector('.usertext, .username, [data-username]');
-        if (userText) {
-            const emailMatch = userText.textContent.match(/[\w.-]+@[\w.-]+\.\w+/);
-            if (emailMatch) {
-                const email = emailMatch[0];
-                console.log('Found email in user text:', email);
-                return { email, name: getUserName() };
-            }
-        }
-
-        // Method 3: Check page HTML/scripts for email
         const bodyText = document.body.innerHTML;
-        const emailMatch = bodyText.match(/["']email["']\s*:\s*["']([\w.-]+@[\w.-]+\.\w+)["']/);
-        if (emailMatch) {
-            const email = emailMatch[1];
-            console.log('Found email in page HTML:', email);
-            return { email, name: getUserName() };
-        }
-
-        // Method 4: Look for SSN email pattern specifically
         const ssnEmailMatch = bodyText.match(/([\w.-]+@ssn\.edu\.in)/);
-        if (ssnEmailMatch) {
-            const email = ssnEmailMatch[1];
-            console.log('Found SSN email:', email);
-            return { email, name: getUserName() };
-        }
-
-        console.warn('Could not extract email from LMS page');
-        return { email: '', name: getUserName() };
-    } catch (error) {
-        console.error('Error extracting email:', error);
-        return { email: '', name: '' };
-    }
+        if (ssnEmailMatch) return { email: ssnEmailMatch[1], name: getUserName() };
+        return { email: 'student@ssn.edu.in', name: getUserName() };
+    } catch (e) { return { email: '', name: '' }; }
 };
 
 const getUserName = () => {
-    try {
-        // Try to extract name from common LMS elements
-        const nameElement = document.querySelector(
-            '.usertext .text, .username, [data-username], .user-name, .fullname'
-        );
-        
-        if (nameElement) {
-            let name = nameElement.textContent.trim();
-            // Remove email if it's part of the name text
-            name = name.replace(/[\w.-]+@[\w.-]+\.\w+/, '').trim();
-            if (name) {
-                console.log('Found user name:', name);
-                return name;
-            }
-        }
-
-        // Try to get from page title or header
-        const pageHeader = document.querySelector('h1, .page-header-headings h1');
-        if (pageHeader) {
-            const text = pageHeader.textContent;
-            if (text && !text.includes('Dashboard') && !text.includes('LMS')) {
-                return text.trim();
-            }
-        }
-
-        return 'Student';
-    } catch (error) {
-        console.error('Error extracting name:', error);
-        return 'Student';
-    }
+    const nameElement = document.querySelector('.usertext .text, .username, [data-username], .user-name');
+    return nameElement ? nameElement.textContent.trim() : 'Student';
 };
 
-// 4. COURSE EXTRACTION
 const extractCourses = () => {
     const courses = [];
     const seenIds = new Set();
@@ -318,6 +217,7 @@ const extractCourses = () => {
     return courses;
 };
 
+// --- DEEP ASSIGNMENT EXTRACTION ---
 const performDeepScan = async (sendResponse) => {
     const courses = extractCourses();
     try {
@@ -326,10 +226,8 @@ const performDeepScan = async (sendResponse) => {
                 const html = await fetch(course.link).then(res => res.text());
                 const doc = new DOMParser().parseFromString(html, 'text/html');
                 
-                // Get all assignment items
                 const assigns = Array.from(doc.querySelectorAll('.activity.modtype_assign'));
                 
-                // Filter for PENDING (Not Done) and Extract Due Dates
                 return assigns.filter(item => {
                     const doneBtn = item.querySelector('button.btn-success');
                     const isDone = doneBtn?.textContent.trim().includes('Done') || !!item.querySelector('.fa-check');
@@ -359,33 +257,27 @@ const performDeepScan = async (sendResponse) => {
     }
 };
 
-const checkIfLoggedIn = () => {
-    return !!(
-        document.querySelector('a[href*="logout"]') || 
-        document.querySelector('.usermenu') ||
-        document.querySelector('[data-username]')
-    );
-};
-
-// 5. MESSAGE LISTENER
+// --- MESSAGE LISTENER ---
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    // Show integrated overlay
     if (request.action === 'SHOW_OVERLAY') {
-        console.log('[Content] Rendering Integrated Workspace...');
-        workspaceRoot.render(<AIViewer />);
-        sendResponse({ success: true });
-        return true;
+        if (rootElement) rootElement.style.display = 'block';
+
+        chrome.storage.local.get(['currentFile'], (result) => {
+            if (result.currentFile) {
+                workspaceRoot.render(
+                    <AIViewer key={result.currentFile.path + Date.now()} />
+                );
+                sendResponse({ success: true });
+            }
+        });
+        return true; 
     }
 
-    // Extract user email
     if (request.action === 'getUserEmail') {
-        const userInfo = extractUserEmail();
-        console.log('[Content] Extracted user info:', userInfo);
-        sendResponse(userInfo);
+        sendResponse(extractUserEmail());
         return true;
     }
 
-    // Extract courses
     if (request.action === 'extractData') {
         sendResponse({ success: true, courses: extractCourses() });
     }
@@ -401,5 +293,3 @@ setInterval(() => {
     injectAIButtons();
     injectDownloadButton();
 }, 2000);
-console.log('✅ LMS Helper: Immersive Content Script Active');
-console.log('📧 Email extraction enabled for reminder system');
