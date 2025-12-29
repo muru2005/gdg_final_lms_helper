@@ -33,7 +33,7 @@
   "host_permissions": [
     "https://lms.ssn.edu.in/*",
     "https://www.googleapis.com/*",
-    "http://10.60.141.123:5000/*",
+    "http://10.31.19.228:5000/*",
     "http://localhost:5000/*",
     "http://192.168.0.2:5000/*"
   ],

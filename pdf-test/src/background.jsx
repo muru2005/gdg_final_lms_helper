@@ -1,6 +1,6 @@
 /* global chrome */
 
-const BACKEND_URL = 'http://192.168.0.2:5000';
+const BACKEND_URL = 'http://10.31.19.228:5000';
 
 // 1. SIDE PANEL SETUP
 chrome.runtime.onInstalled.addListener(() => {
@@ -47,8 +47,23 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
 
+  // --- NEW: DRIVE UPLOAD PROXY (Fixes MindMap Fetch Error) ---
+  if (msg.action === 'UPLOAD_TO_DRIVE_PROXY') {
+    fetch(`${BACKEND_URL}/api/upload-file-to-drive`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(msg.data)
+    })
+    .then(res => res.json())
+    .then(data => sendResponse(data))
+    .catch(err => {
+        console.error("[Background] Drive Proxy Error:", err);
+        sendResponse({ ok: false, error: err.message });
+    });
+    return true; // Keep channel open for async fetch
+  }
+
   // --- AI TOOLS BRIDGE (Flask Proxy) ---
-  // Updated to include GENERATE_QUIZ
   if (['GENERATE_SUMMARY', 'GENERATE_MINDMAP', 'CHAT', 'GENERATE_QUIZ'].includes(msg.action)) {
     const endpointMap = {
         'CHAT': '/chat',
@@ -66,7 +81,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     })
     .then(res => res.json())
     .then(data => {
-      // Forward the response back to the UI in the tab
       if (sender.tab && sender.tab.id) {
           chrome.tabs.sendMessage(sender.tab.id, { 
               action: `RECEIVE_${msg.action}`, 
@@ -85,21 +99,18 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   // --- PDF SMUGGLING (Initial Trigger) ---
   if (msg.action === 'AI_TOOL_TRIGGERED' || msg.action === 'OPEN_FILE_VIEWER') {
     const fileUrl = msg.fileUrl || msg.url;
-    const toolMode = msg.tool || 'VIEW'; // Get the mode from the content script
+    const toolMode = msg.tool || 'VIEW'; 
     
-    // Save state so side panel can see what's open
     chrome.storage.local.set({ 
         currentFile: { 
             path: fileUrl, 
             name: msg.fileName || msg.name, 
             fileUrl: fileUrl 
         },
-        initialMode: toolMode // Save the mode as well
+        initialMode: toolMode 
     }, () => {
-        // Render the integrated overlay
         if (sender.tab?.id) {
           chrome.tabs.sendMessage(sender.tab.id, { action: 'SHOW_OVERLAY' }).catch(() => {}); 
-          // FIX: We must forward the 'tool' so AIViewer knows to switch modes!
             chrome.tabs.sendMessage(sender.tab.id, { 
                 action: 'AI_TOOL_TRIGGERED', 
                 tool: toolMode,
@@ -107,7 +118,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             }).catch(() => {});
         }
         
-        // Smuggle PDF to Flask
         fetch(fileUrl)
           .then(res => res.arrayBuffer())
           .then(buffer => {

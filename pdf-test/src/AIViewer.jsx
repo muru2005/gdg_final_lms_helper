@@ -1,12 +1,13 @@
 /* global chrome */
 import React, { useState, useEffect } from 'react';
 import FileViewer from './components/FileViewer';
-import SummaryModal from './components/SummaryModal'; // This is your Summary Workspace
+import SummaryModal from './components/SummaryModal';
 import MindMap from './components/MindMap';
 import ChatBox from './components/ChatBox';
-import QuizModal from './components/QuizModal'
+import QuizModal from './components/QuizModal';
+
 const AIViewer = () => {
-    // Modes: 'VIEW', 'SUMMARY', 'MINDMAP'
+    // Modes: 'VIEW', 'SUMMARY', 'MINDMAP', 'QUIZ'
     const [mode, setMode] = useState('VIEW'); 
     const [currentFile, setCurrentFile] = useState(null);
     const [chatOpen, setChatOpen] = useState(false);
@@ -14,29 +15,30 @@ const AIViewer = () => {
     // AI Data States
     const [summaryData, setSummaryData] = useState(null);
     const [mindMapData, setMindMapData] = useState(null);
+    const [quizUrl, setQuizUrl] = useState(null); // URL for the generated Google Form
     const [isProcessing, setIsProcessing] = useState(false);
 
     useEffect(() => {
-        // 1. Initial Load: Check if we opened via a specific button from LMS
+        // 1. Initial Load: Sync file and mode from storage
         chrome.storage.local.get(['currentFile', 'initialMode'], (result) => {
             if (result.currentFile) {
                 setCurrentFile(result.currentFile);
                 const startMode = result.initialMode || 'VIEW';
                 setMode(startMode);
                 
-                // If the user clicked Summary/Mindmap, we reset data to trigger the "Ask" prompt
                 if (startMode === 'SUMMARY') setSummaryData(null);
                 if (startMode === 'MINDMAP') setMindMapData(null);
+                if (startMode === 'QUIZ') setQuizUrl(null);
             }
         });
 
-        // 2. Listen for Mode Switches (Buttons clicked while workspace is open)
+        // 2. Message Listener: Catch AI responses from background.js
         const messageListener = (request) => {
             if (request.action === 'AI_TOOL_TRIGGERED') {
-                console.log("[Viewer] Received instruction to switch to:", request.tool);
-                setMode(request.tool); // Immediately hides current view
+                setMode(request.tool);
                 if (request.tool === 'SUMMARY') setSummaryData(null); 
                 if (request.tool === 'MINDMAP') setMindMapData(null);
+                if (request.tool === 'QUIZ') setQuizUrl(null);
             }
             
             if (request.action === 'RECEIVE_GENERATE_SUMMARY') {
@@ -48,39 +50,66 @@ const AIViewer = () => {
                 setMindMapData(request.payload);
                 setIsProcessing(false);
             }
+
+            // --- QUIZ RESPONSE HANDLER ---
+            if (request.action === 'RECEIVE_GENERATE_QUIZ') {
+                if (request.payload.formUrl) {
+                    setQuizUrl(request.payload.formUrl);
+                    setIsProcessing(false);
+                    // Automatically open in new tab if possible
+                    window.open(request.payload.formUrl, '_blank');
+                } else {
+                    setIsProcessing(false);
+                    alert("Quiz Error: " + (request.payload.error || "Generation failed"));
+                }
+            }
         };
 
         chrome.runtime.onMessage.addListener(messageListener);
         return () => chrome.runtime.onMessage.removeListener(messageListener);
     }, []);
 
-    // --- LOGIC: TRIGGERING THE AI (CALLED AFTER USER SAYS "YES") ---
+    // --- LOGIC: TRIGGERING THE AI TOOLS ---
 
     const startSummaryGeneration = () => {
         const path = currentFile?.fileUrl || currentFile?.url;
         if (!path) return;
-
-        console.log("[AIViewer] User confirmed. Starting Summary AI...");
         setIsProcessing(true);
-        setSummaryData(null); // Clear any old data
-        
-        chrome.runtime.sendMessage({ 
-            action: 'GENERATE_SUMMARY', 
-            data: { file_path: path } 
-        });
+        setSummaryData(null); 
+        chrome.runtime.sendMessage({ action: 'GENERATE_SUMMARY', data: { file_path: path } });
     };
 
     const startMindMapGeneration = () => {
         const path = currentFile?.fileUrl || currentFile?.url;
         if (!path) return;
-
-        console.log("[AIViewer] User confirmed. Starting MindMap AI...");
         setIsProcessing(true);
         setMindMapData(null);
+        chrome.runtime.sendMessage({ action: 'GENERATE_MINDMAP', data: { file_path: path } });
+    };
 
-        chrome.runtime.sendMessage({ 
-            action: 'GENERATE_MINDMAP', 
-            data: { file_path: path } 
+    // --- NEW: START QUIZ GENERATION ---
+    const startQuizGeneration = () => {
+        const path = currentFile?.fileUrl || currentFile?.url;
+        if (!path) return;
+
+        setIsProcessing(true);
+        setQuizUrl(null);
+
+        // Fetch sessionToken for Google Form authentication
+        chrome.storage.local.get(['sessionToken'], (res) => {
+            if (!res.sessionToken) {
+                setIsProcessing(false);
+                alert("Auth Error: Please log in via the side-panel first.");
+                return;
+            }
+
+            chrome.runtime.sendMessage({ 
+                action: 'GENERATE_QUIZ', 
+                data: { 
+                    file_path: path,
+                    access_token: res.sessionToken 
+                } 
+            });
         });
     };
 
@@ -108,17 +137,14 @@ const AIViewer = () => {
                 `}
             </style>
 
-            {/* THE CRITICAL LOGIC: 
-                We use a ternary/conditional block to ensure only ONE 
-                component exists at a time. This kills the PDF viewer 
-                the moment you switch to Summary.
-            */}
+            {/* CONDITIONAL RENDER: Hides components not in current mode */}
             {mode === 'VIEW' ? (
                <FileViewer 
                 fileUrl={currentFile.fileUrl || currentFile.url} 
                 fileName={currentFile.name}
                 onClose={handleClose}
-                // --- ADD THESE PROPS ---
+                onOpenSummary={() => setMode('SUMMARY')}
+                onOpenMindMap={() => setMode('MINDMAP')}
                 onOpenQuiz={() => setMode('QUIZ')} 
                 onOpenChat={() => setChatOpen(true)}
             />
@@ -128,19 +154,21 @@ const AIViewer = () => {
                     data={summaryData}
                     isLoading={isProcessing}
                     fileName={currentFile.name}
-                    onConfirmStart={startSummaryGeneration} // Prop to trigger the "Yes" logic
+                    onConfirmStart={startSummaryGeneration} 
                     onRegenerate={startSummaryGeneration}
                     onBack={() => setMode('VIEW')}
                     onClose={handleClose}
                 />
             ) : mode === 'QUIZ' ? (
-            /* Ensure you have a Quiz component or mode handled here */
-            <QuizModal 
-                fileName={currentFile.name}
-                onBack={() => setMode('VIEW')}
-                onClose={handleClose}
-            />
-        ) : mode === 'MINDMAP' ? (
+                <QuizModal 
+                    isOpen={true}
+                    isLoading={isProcessing}
+                    fileName={currentFile.name}
+                    quizUrl={quizUrl}
+                    onConfirmStart={startQuizGeneration} // <--- WIRED TO LOGIC
+                    onClose={() => setMode('VIEW')}
+                />
+            ) : mode === 'MINDMAP' ? (
                 <MindMap 
                     data={mindMapData}
                     isLoading={isProcessing}
@@ -152,7 +180,7 @@ const AIViewer = () => {
                 />
             ) : null}
 
-            {/* FLOATING ASK AI: Only visible in standard PDF view mode */}
+            {/* FLOATING CHAT */}
             {mode === 'VIEW' && (
                 <ChatBox 
                     isOpen={chatOpen} 
@@ -161,7 +189,7 @@ const AIViewer = () => {
                 />
             )}
 
-            {/* GLOBAL LOADER TOAST: Only shows while AI is active */}
+            {/* GLOBAL LOADING TOAST */}
             {isProcessing && (
                 <div style={toastStyle}>
                     <div className="lms-loading-spinner" style={{width: '20px', height: '20px', borderThickness: '2px'}}></div>
@@ -173,41 +201,7 @@ const AIViewer = () => {
 };
 
 // --- STYLES ---
-
-const mainContainerStyle = { 
-    width: '100vw', 
-    height: '100vh', 
-    position: 'fixed', 
-    top: 0, 
-    left: 0, 
-    backgroundColor: '#ffffff', 
-    zIndex: 999999,
-    display: 'flex',
-    flexDirection: 'column'
-};
-
-const contentWrapperStyle = {
-    flex: 1,
-    position: 'relative',
-    overflow: 'hidden'
-};
-
-const toastStyle = { 
-    position: 'fixed', 
-    bottom: '40px', 
-    left: '50%', 
-    transform: 'translateX(-50%)', 
-    backgroundColor: '#1e293b', 
-    color: 'white', 
-    padding: '14px 28px', 
-    borderRadius: '50px', 
-    display: 'flex', 
-    alignItems: 'center', 
-    gap: '15px', 
-    boxShadow: '0 20px 40px rgba(0,0,0,0.6)', 
-    zIndex: 1000005, 
-    border: '1px solid rgba(255,255,255,0.1)', 
-    backdropFilter: 'blur(10px)' 
-};
+const mainContainerStyle = { width: '100vw', height: '100vh', position: 'fixed', top: 0, left: 0, backgroundColor: '#ffffff', zIndex: 999999, display: 'flex', flexDirection: 'column' };
+const toastStyle = { position: 'fixed', bottom: '40px', left: '50%', transform: 'translateX(-50%)', backgroundColor: '#1e293b', color: 'white', padding: '14px 28px', borderRadius: '50px', display: 'flex', alignItems: 'center', gap: '15px', boxShadow: '0 20px 40px rgba(0,0,0,0.6)', zIndex: 1000005, border: '1px solid rgba(255,255,255,0.1)', backdropFilter: 'blur(10px)' };
 
 export default AIViewer;
