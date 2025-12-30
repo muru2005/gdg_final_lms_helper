@@ -1,12 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
+import { LayoutDashboard, BookOpen, RefreshCw, LogOut } from 'lucide-react';
+
 const BACKEND_URL = 'http://127.0.0.1:5000';
+
 const MainLayout = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [user, setUser] = useState({ name: 'Loading...', semester: 'Sem 6' });
   const [courseCount, setCourseCount] = useState(0);
-  const [isRefreshing, setIsRefreshing]=useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
   const fetchLocalData = () => {
     chrome.storage.local.get(['user', 'allCourses', 'userName'], (result) => {
       setUser({
@@ -22,6 +26,7 @@ const MainLayout = () => {
   useEffect(() => {
     fetchLocalData();
   }, []);
+
   const syncToFirestore = async (pending, overdue, email, name) => {
     try {
       const response = await fetch(`${BACKEND_URL}/api/sync-assignments`, {
@@ -37,7 +42,7 @@ const MainLayout = () => {
       const result = await response.json();
       return result.success;
     } catch (error) {
-      console.error('❌ Firestore sync error:', error);
+      console.error('Firestore sync error:', error);
       return false;
     }
   };
@@ -52,7 +57,6 @@ const MainLayout = () => {
       return;
     }
 
-    // --- START DATA SYNC LOGIC (Copied from DataSync) ---
     chrome.tabs.sendMessage(tab.id, { action: 'getUserEmail' }, async (emailResponse) => {
       const userEmail = emailResponse?.email || '';
       const userName = emailResponse?.name || 'Student';
@@ -64,8 +68,7 @@ const MainLayout = () => {
               const allFetched = courseResponse.courses;
               const rawAllUnfinished = assignResponse.assignments;
               const now = new Date();
-              
-              // Filtering logic
+
               const currentyearcode = now.getFullYear() % 100;
               const targetyearplusone = (currentyearcode + 1).toString();
               const targetyear = (currentyearcode).toString();
@@ -91,8 +94,7 @@ const MainLayout = () => {
                 }
               });
 
-              // Saving to Storage
-              chrome.storage.local.set({ 
+              chrome.storage.local.set({
                 allCourses: allFetched,
                 currentSemesterCourses: filteredResults,
                 pendingAssignments: pending,
@@ -101,12 +103,11 @@ const MainLayout = () => {
                 userName: userName,
                 lastSync: now.toLocaleString()
               }, async () => {
-                // Cloud Sync
                 if (userEmail) {
                   await syncToFirestore(pending, overdue, userEmail, userName);
                 }
-                
-                fetchLocalData(); // Update the Header UI
+
+                fetchLocalData();
                 setIsRefreshing(false);
                 alert('Sync Complete!');
               });
@@ -120,52 +121,71 @@ const MainLayout = () => {
       });
     });
   };
+
   const handleLogout = () => {
     chrome.storage.local.clear(() => {
       navigate('/');
     });
   };
 
+  const navItems = [
+    { path: '/main/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { path: '/main/courses', label: 'Courses', icon: BookOpen },
+  ];
+
   return (
     <div className="flex flex-col h-screen bg-slate-50">
-      <div className='bg-gradient-to-r from-[#6a5af9] to-[#8c7cfd] p-6 text-white shadow-lg'>
+      {/* Header */}
+      <div className='bg-gradient-to-r from-violet-600 via-purple-600 to-indigo-600 p-5 text-white shadow-xl'>
         <div className='flex flex-row justify-between items-center'>
           <div>
-            <h1 className='text-xl font-bold tracking-tight'>{user.name}</h1>
-            <p className='text-xs font-bold opacity-90'>{user.semester} • {courseCount} Courses</p>
+            <h1 className='text-lg font-semibold tracking-tight'>{user.name}</h1>
+            <p className='text-xs font-medium opacity-80 mt-0.5'>{user.semester} • {courseCount} Courses</p>
           </div>
-          <button 
-            onClick={handleLogout} 
-            className='px-4 py-2 rounded-lg bg-white/20 hover:bg-white/30 transition-colors font-bold text-sm border border-white/30'
-          >
-            Logout
-          </button>
-         
+          <div className='flex items-center gap-2'>
+            <button
+              onClick={handleRefresh}
+              disabled={isRefreshing}
+              className='p-2.5 rounded-xl bg-white/10 hover:bg-white/20 active:bg-white/30 transition-all duration-200 border border-white/20 backdrop-blur-sm disabled:opacity-50'
+              title="Refresh Data"
+            >
+              <RefreshCw size={18} className={isRefreshing ? 'animate-spin' : ''} />
+            </button>
+            <button
+              onClick={handleLogout}
+              className='p-2.5 rounded-xl bg-white/10 hover:bg-white/20 active:bg-white/30 transition-all duration-200 border border-white/20 backdrop-blur-sm'
+              title="Logout"
+            >
+              <LogOut size={18} />
+            </button>
+          </div>
         </div>
       </div>
-      <div className='flex flex-row justify-center align items-center'>
-       <button  onClick={handleRefresh} className=' h-[50px] w-[80px]  text-center px-4 py-2 rounded-lg bg-amber-400 hover:bg-amber-200 transition-colors font-bold text-sm border border-white/30'>Refresh</button>
-      </div>
+
+      {/* Main Content */}
       <div className="flex-1 overflow-y-auto p-4 pb-24">
-        <Outlet /> 
+        <Outlet />
       </div>
 
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 px-6 py-3 flex justify-around items-center shadow-[0_-4px_10px_rgba(0,0,0,0.05)]">
-        <button 
-          onClick={() => navigate('/main/dashboard')}
-          className={`flex flex-col items-center gap-1 ${location.pathname.includes('dashboard') ? 'text-[#6a5af9]' : 'text-slate-400'}`}
-        >
-          <span className="text-xl">📊</span>
-          <span className="text-[10px] font-bold">Dashboard</span>
-        </button>
-        
-        <button 
-          onClick={() => navigate('/main/courses')}
-          className={`flex flex-col items-center gap-1 ${location.pathname.includes('courses') ? 'text-[#6a5af9]' : 'text-slate-400'}`}
-        >
-          <span className="text-xl">📚</span>
-          <span className="text-[10px] font-bold">Courses</span>
-        </button>
+      {/* Bottom Navigation */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-xl border-t border-slate-200/50 px-6 py-3 flex justify-around items-center shadow-[0_-8px_30px_rgba(0,0,0,0.06)]">
+        {navItems.map((item) => {
+          const Icon = item.icon;
+          const isActive = location.pathname.includes(item.path.split('/').pop());
+          return (
+            <button
+              key={item.path}
+              onClick={() => navigate(item.path)}
+              className={`flex flex-col items-center gap-1 px-6 py-2 rounded-xl transition-all duration-200 ${isActive
+                  ? 'text-violet-600 bg-violet-50'
+                  : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'
+                }`}
+            >
+              <Icon size={20} strokeWidth={isActive ? 2.5 : 2} />
+              <span className="text-[10px] font-semibold tracking-wide">{item.label}</span>
+            </button>
+          );
+        })}
       </div>
     </div>
   );
