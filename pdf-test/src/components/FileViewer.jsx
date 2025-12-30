@@ -43,7 +43,8 @@ const FileViewer = ({ fileUrl, fileName, onClose, onOpenSummary, onOpenMindMap, 
             {/* STICKY GLASS HEADER WITH TOOLS */}
             <div style={headerStyle} onClick={(e) => e.stopPropagation()}>
                 <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
-                   
+                    
+                    {/* TRIGGER: This button now correctly calls onOpenQuiz from AIViewer */}
                     <button onClick={onOpenQuiz} style={toolBtn}>🎯 Quiz</button>
                     <button onClick={onOpenChat} style={toolBtn}>💬 Ask AI</button>
                     
@@ -90,7 +91,7 @@ const FileViewer = ({ fileUrl, fileName, onClose, onOpenSummary, onOpenMindMap, 
     );
 };
 
-// --- GMAIL-STYLE INTEGRATED STYLES ---
+// --- GMAIL-STYLE INTEGRATED STYLES (UNTOUCHED) ---
 const overlayStyle = { position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.96)', zIndex: 999999, overflowY: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', backdropFilter: 'blur(15px)' };
 const headerStyle = { width: '100%', padding: '12px 40px', display: 'flex', justifyContent: 'space-between', backgroundColor: 'rgba(255, 255, 255, 0.05)', backdropFilter: 'blur(25px)', position: 'sticky', top: 0, zIndex: 1000, borderBottom: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 4px 30px rgba(0,0,0,0.4)' };
 const toolBtn = { padding: '8px 16px', borderRadius: '20px', border: 'none', cursor: 'pointer', fontWeight: 'bold', backgroundColor: '#fff', color: '#1e293b', transition: 'all 0.2s' };

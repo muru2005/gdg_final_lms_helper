@@ -47,32 +47,43 @@ const SummaryModal = ({ isOpen, data, isLoading, fileName, onConfirmStart, onReg
             .replace(/\n/g, '<br/>');
     };
 
+    // --- UPDATED: PROXIED TO BACKGROUND.JS ---
     const handleShareToDrive = async () => {
         if (!data) return;
         try {
             setIsSavingToDrive(true);
-            chrome.storage.local.get(['sessionToken'], async (res) => {
+            setSaveStatus({ type: 'progress', message: 'Relaying to background script...' });
+
+            chrome.storage.local.get(['sessionToken'], (res) => {
                 if (!res.sessionToken) {
                     setSaveStatus({ type: 'error', message: 'Log in via side-panel first.' });
                     setIsSavingToDrive(false);
                     return;
                 }
+
                 const title = fileName ? fileName.replace(/\.(pdf|docx?|txt)$/i, '') : 'Summary';
                 const subject = prompt('Enter subject:', 'General');
                 if (!subject) { setIsSavingToDrive(false); return; }
+
                 const cleanBody = cleanMarkdownForDocs(data);
                 const formattedHtml = `<html><body><h1>${title}</h1><p><b>Subject:</b> ${subject}</p><div>${cleanBody}</div></body></html>`;
-                const response = await fetch('http://192.168.0.3:5000/api/save-summary', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ summary: { title, subject, content: formattedHtml }, accessToken: res.sessionToken })
+
+                // Logic changed: Now using background.js proxy to bypass CORS "Failed to fetch"
+                chrome.runtime.sendMessage({
+                    action: 'SAVE_SUMMARY_TO_DRIVE',
+                    data: {
+                        summary: { title, subject, content: formattedHtml },
+                        accessToken: res.sessionToken
+                    }
+                }, (response) => {
+                    if (response && response.ok) {
+                        setSaveStatus({ type: 'success', message: '✅ Saved to Drive!' });
+                        if (confirm('Saved! Open in Google Drive?')) window.open(response.driveLink, '_blank');
+                    } else {
+                        setSaveStatus({ type: 'error', message: response?.error || 'Upload failed' });
+                    }
+                    setIsSavingToDrive(false);
                 });
-                const result = await response.json();
-                if (response.ok && result.ok) {
-                    setSaveStatus({ type: 'success', message: '✅ Saved to Drive!' });
-                    if (confirm('Saved! Open in Google Drive?')) window.open(result.driveLink, '_blank');
-                }
-                setIsSavingToDrive(false);
             });
         } catch (e) {
             setSaveStatus({ type: 'error', message: e.message });
@@ -122,34 +133,28 @@ const SummaryModal = ({ isOpen, data, isLoading, fileName, onConfirmStart, onReg
                 </div>
 
                 <div style={contentArea}>
-                    {/* ENHANCED PRIORITY LOGIC */}
                     {isLoading && data ? (
-                        /* CASE 1: REGENERATING (Has old data, loading fresh one) */
                         <div style={centerBox}>
                             <div className="lms-loading-spinner" style={spinnerStyle}></div>
                             <h3 style={{marginTop: '20px'}}>Llama-3 is re-architecting insights...</h3>
                             <p style={{color: '#64748b'}}>Bypassing cache for a fresh perspective.</p>
                         </div>
                     ) : isLoading && hasConfirmed ? (
-                        /* CASE 2: USER CLICKED 'YES' (First time generation) */
                         <div style={centerBox}>
                             <div className="lms-loading-spinner" style={spinnerStyle}></div>
                             <h3 style={{marginTop: '20px'}}>Architecting your summary...</h3>
                             <p style={{color: '#64748b'}}>Llama-3 is analyzing the document for the first time.</p>
                         </div>
                     ) : isLoading ? (
-                        /* CASE 3: SILENT BACKGROUND CHECK (Checking Firestore) */
                         <div style={centerBox}>
                             <div className="lms-loading-spinner" style={spinnerStyle}></div>
                             <h3 style={{marginTop: '20px'}}>Checking Firestore cache...</h3>
                         </div>
                     ) : data ? (
-                        /* CASE 4: DISPLAY DATA */
                         <div style={paperStyle}>
                             <MarkdownRenderer text={data} />
                         </div>
                     ) : (
-                        /* CASE 5: SHOW PROMPT (Default state for new files) */
                         <div style={centerBox}>
                             <div style={{fontSize: '60px'}}>📄</div>
                             <h2 style={{fontSize: '24px'}}>Generate summary for "{fileName}"?</h2>

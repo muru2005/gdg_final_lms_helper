@@ -189,7 +189,7 @@ def generate_summary():
     
     # --- START WAIT LOGIC ---
     # Give the background 'process-file' thread time to finish extracting text
-    max_retries = 10 
+    max_retries = 25
     retry_count = 0
     
     while file_path not in PROCESSED_FILES and retry_count < max_retries:
@@ -258,12 +258,23 @@ def generate_mindmap():
     user_email = data.get('email', 'unknown@ssn.edu.in')
     force_refresh = data.get('forceRefresh', False)
     
+    # --- START WAIT LOGIC ---
+    # Give the background 'process-file' thread time to finish extracting text
+    max_retries = 25
+    retry_count = 0
+    
+    while file_path not in PROCESSED_FILES and retry_count < max_retries:
+        print(f"⏳ MindMap: File {file_path} not ready. Waiting... ({retry_count + 1}/{max_retries})")
+        time.sleep(1)  # Wait 1 second before checking again
+        retry_count += 1
+
     if file_path not in PROCESSED_FILES:
-        return jsonify({"error": "Process file first"}), 400
+        return jsonify({"error": "File text not extracted yet. Please try again in a moment."}), 400
+    # --- END WAIT LOGIC ---
 
     # 1. Generate IDs
     file_hash = get_file_hash(file_path)
-    user_id = extract_user_digital_id(user_email)
+    user_id = extract_digital_id(user_email)
 
     # 2. CACHE CHECK
     doc_ref = db.collection('ai_content').document(file_hash)
@@ -273,9 +284,13 @@ def generate_mindmap():
         stored_data = cached_doc.to_dict()
         if "mindmap_data" in stored_data:
             print(f"📦 Cache Hit: Found MindMap for {file_hash}")
-            return jsonify(stored_data["mindmap_data"])
+            return jsonify({
+                "mindmap": stored_data["mindmap_data"], 
+                "isCached": True
+            })
 
     # 3. AI GENERATION
+    print(f"🤖 AI MindMap Generation Started for: {file_hash}")
     content = PROCESSED_FILES[file_path].get("summary") or PROCESSED_FILES[file_path]["text"][:10000]
     prompt = f"""
     Return ONLY valid JSON for a mindmap (title/children) based on this:
@@ -291,6 +306,7 @@ def generate_mindmap():
         )
         raw = response.choices[0].message.content.strip()
         json_match = re.search(r'\{.*\}', raw, re.DOTALL)
+        
         if json_match:
             parsed = json.loads(json_match.group(0))
             
@@ -302,9 +318,14 @@ def generate_mindmap():
                 "last_updated": firestore.SERVER_TIMESTAMP
             }, merge=True)
             
-            return jsonify(parsed)
+            return jsonify({
+                "mindmap": parsed,
+                "isCached": False
+            })
+            
         return jsonify({"error": "AI failed to build JSON"}), 500
     except Exception as e:
+        print(f"🔥 MindMap Error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/chat', methods=['POST'])

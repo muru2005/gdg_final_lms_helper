@@ -3,7 +3,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MarkdownRenderer } from '../utils/markdownParser.jsx';
 
-const ChatBox = ({ isOpen, onClose, filePath }) => {
+// FIX: Changed filePath to fileUrl to match your AIViewer props
+const ChatBox = ({ isOpen, onClose, fileUrl, fileName }) => {
     const [messages, setMessages] = useState([]);
     const [input, setInput] = useState('');
     const [loading, setLoading] = useState(false);
@@ -16,10 +17,11 @@ const ChatBox = ({ isOpen, onClose, filePath }) => {
         }
     }, [messages]);
 
-    // 2. MESSAGE LISTENER: Catch AI answers from the background script
+    // 2. MESSAGE LISTENER
     useEffect(() => {
         const messageListener = (request) => {
             if (request.action === 'RECEIVE_CHAT') {
+                console.log("📥 Received Chat Response:", request.payload);
                 setMessages(prev => [...prev, { role: 'assistant', content: request.payload.answer }]);
                 setLoading(false);
             }
@@ -38,12 +40,12 @@ const ChatBox = ({ isOpen, onClose, filePath }) => {
         setLoading(true);
 
         // 3. SEND TO BACKGROUND BRIDGE
-        // Instead of axios, we ask the background script to talk to Flask
+        // Ensuring we send 'fileUrl' to the backend so it can find the processed text
         chrome.runtime.sendMessage({ 
             action: 'CHAT', 
             data: { 
                 query: userMsg,
-                file_path: filePath 
+                file_path: fileUrl 
             } 
         });
     };
@@ -58,7 +60,10 @@ const ChatBox = ({ isOpen, onClose, filePath }) => {
                     style={chatContainerStyle}
                 >
                     <div style={headerStyle}>
-                        <span style={{ fontWeight: 'bold' }}>💬 Ask PDF AI</span>
+                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                            <span style={{ fontWeight: 'bold' }}>💬 Ask PDF AI</span>
+                            <span style={{ fontSize: '10px', color: '#64748b' }}>{fileName}</span>
+                        </div>
                         <button onClick={onClose} style={closeIconStyle}>✕</button>
                     </div>
 
@@ -82,7 +87,12 @@ const ChatBox = ({ isOpen, onClose, filePath }) => {
                                 )}
                             </div>
                         ))}
-                        {loading && <div style={loaderStyle}>Thinking...</div>}
+                        {loading && (
+                            <div style={{ alignSelf: 'flex-start', display: 'flex', gap: '5px', alignItems: 'center' }}>
+                                <div className="lms-loading-spinner" style={{ width: '12px', height: '12px', borderWidth: '2px' }}></div>
+                                <div style={loaderStyle}>Thinking...</div>
+                            </div>
+                        )}
                     </div>
 
                     <div style={inputAreaStyle}>
@@ -103,21 +113,14 @@ const ChatBox = ({ isOpen, onClose, filePath }) => {
     );
 };
 
-// --- STYLES (MATCHING YOUR MODERN UI) ---
-const chatContainerStyle = {
-    position: 'fixed', bottom: '30px', right: '30px',
-    width: '380px', height: '550px', backgroundColor: 'white',
-    borderRadius: '24px', boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
-    display: 'flex', flexDirection: 'column', zIndex: 1000020, // Highest layer
-    overflow: 'hidden', border: '1px solid #e2e8f0'
-};
-
+// --- STYLES (UNTOUCHED) ---
+const chatContainerStyle = { position: 'fixed', bottom: '30px', right: '30px', width: '380px', height: '550px', backgroundColor: 'white', borderRadius: '24px', boxShadow: '0 20px 60px rgba(0,0,0,0.3)', display: 'flex', flexDirection: 'column', zIndex: 1000020, overflow: 'hidden', border: '1px solid #e2e8f0' };
 const headerStyle = { padding: '18px 22px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fff' };
 const closeIconStyle = { border: 'none', background: 'none', fontSize: '20px', cursor: 'pointer', color: '#94a3b8' };
 const chatAreaStyle = { flex: 1, padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '18px', backgroundColor: '#fff' };
 const welcomeTextStyle = { textAlign: 'center', color: '#94a3b8', marginTop: '60px', fontSize: '14px' };
 const bubbleStyle = { padding: '12px 18px', borderRadius: '18px', maxWidth: '85%', fontSize: '14px', lineHeight: '1.5', boxShadow: '0 2px 5px rgba(0,0,0,0.05)' };
-const loaderStyle = { fontSize: '12px', color: '#6366f1', paddingLeft: '5px', fontWeight: 'bold' };
+const loaderStyle = { fontSize: '12px', color: '#6366f1', fontWeight: 'bold' };
 const inputAreaStyle = { padding: '15px 20px', borderTop: '1px solid #f1f5f9', backgroundColor: '#fff' };
 const inputFieldStyle = { flex: 1, padding: '12px 18px', borderRadius: '25px', border: '1px solid #e2e8f0', outline: 'none', fontSize: '14px' };
 const sendBtnStyle = { backgroundColor: '#007AFF', color: 'white', border: 'none', borderRadius: '50%', width: '40px', height: '40px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px' };

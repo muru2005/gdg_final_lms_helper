@@ -9,10 +9,14 @@ const MindMap = ({ data, isLoading, fileName, onConfirmStart, onRegenerate, onCl
     const [isSavingToDrive, setIsSavingToDrive] = useState(false);
     const [saveStatus, setSaveStatus] = useState(null);
 
+    // Sync confirmation state with data arrival
     useEffect(() => {
-        if (!data) setHasConfirmed(false);
-        else setHasConfirmed(true);
-    }, [fileName, data]);
+        if (data) {
+            setHasConfirmed(true);
+        } else if (!isLoading) {
+            setHasConfirmed(false);
+        }
+    }, [data, isLoading]);
 
     const handleYesClick = () => {
         setHasConfirmed(true);
@@ -22,6 +26,7 @@ const MindMap = ({ data, isLoading, fileName, onConfirmStart, onRegenerate, onCl
     // --- 1. D3 RENDERING LOGIC ---
     useEffect(() => {
         if (!data || !svgRef.current || !hasConfirmed || isLoading) return;
+        
         const width = 1400; 
         const height = 1000;
         d3.select(svgRef.current).selectAll("*").remove();
@@ -97,41 +102,26 @@ const MindMap = ({ data, isLoading, fileName, onConfirmStart, onRegenerate, onCl
         update(root);
     }, [data, hasConfirmed, isLoading]);
 
-    // --- 2. ENHANCED SVG EXPORT LOGIC ---
+    // Export Logic
     const getSvgData = () => {
-    const originalSvg = svgRef.current;
-    if (!originalSvg) return null;
+        const originalSvg = svgRef.current;
+        if (!originalSvg) return null;
+        const clonedSvg = originalSvg.cloneNode(true);
+        clonedSvg.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+        clonedSvg.removeAttribute("viewBox");
+        clonedSvg.setAttribute("width", "3000"); 
+        clonedSvg.setAttribute("height", "2400");
+        const background = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+        background.setAttribute("width", "100%");
+        background.setAttribute("height", "100%");
+        background.setAttribute("fill", "white");
+        clonedSvg.insertBefore(background, clonedSvg.firstChild);
+        const g = clonedSvg.querySelector("g");
+        if (g) { g.setAttribute("transform", "translate(1500, 1200) scale(0.6)"); }
+        const svgString = new XMLSerializer().serializeToString(clonedSvg);
+        return btoa(unescape(encodeURIComponent(svgString)));
+    };
 
-    // 1. Clone the current state (including all expanded nodes)
-    const clonedSvg = originalSvg.cloneNode(true);
-
-    // 2. Add SVG Namespace for external compatibility
-    clonedSvg.setAttribute("xmlns", "http://www.w3.org/2000/svg");
-    
-    // 3. Force a massive canvas size to prevent "cutoff" of expanded branches
-    clonedSvg.removeAttribute("viewBox");
-    clonedSvg.setAttribute("width", "3000"); 
-    clonedSvg.setAttribute("height", "2400");
-
-    // 4. Inject a Solid White Background
-    // This fixes the "blank/gray" screen issue in Drive previews
-    const background = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-    background.setAttribute("width", "100%");
-    background.setAttribute("height", "100%");
-    background.setAttribute("fill", "white");
-    clonedSvg.insertBefore(background, clonedSvg.firstChild);
-
-    // 5. MASTER ALIGNMENT:
-    // We move the center of the tree to (1500, 1200) so nodes can expand 
-    // freely in all directions without hitting the "negative space" border
-    const g = clonedSvg.querySelector("g");
-    if (g) {
-        g.setAttribute("transform", "translate(1500, 1200) scale(0.6)");
-    }
-
-    const svgString = new XMLSerializer().serializeToString(clonedSvg);
-    return btoa(unescape(encodeURIComponent(svgString)));
-};
     const handleDownloadLocal = () => {
         const base64Data = getSvgData();
         if (!base64Data) return;
@@ -141,22 +131,14 @@ const MindMap = ({ data, isLoading, fileName, onConfirmStart, onRegenerate, onCl
         link.click();
     };
 
-    // --- 3. PROXY-BASED DRIVE UPLOAD (Bypasses Fetch Errors) ---
+    // --- UPDATED: SAVE TO DRIVE WITH REDIRECT LOGIC ---
     const handleSaveToDrive = async () => {
         try {
             setIsSavingToDrive(true);
-            setSaveStatus({ type: 'progress', message: 'Architecting High-Res SVG...' });
-            
+            setSaveStatus({ type: 'progress', message: 'Architecting SVG...' });
             const base64Data = getSvgData();
-            if (!base64Data) {
-                setIsSavingToDrive(false);
-                return;
-            }
-
             chrome.storage.local.get(['sessionToken'], (res) => {
                 const subject = prompt('Course/Subject Name:', 'General') || 'General';
-                
-                // Communicate with background.js proxy to bypass CORS/Network security
                 chrome.runtime.sendMessage({
                     action: 'UPLOAD_TO_DRIVE_PROXY',
                     data: {
@@ -168,9 +150,15 @@ const MindMap = ({ data, isLoading, fileName, onConfirmStart, onRegenerate, onCl
                     }
                 }, (response) => {
                     if (response && response.ok) {
-                        setSaveStatus({ type: 'success', message: '✅ SVG Stored Successfully!' });
-                        if (confirm('SVG Saved! Open in Google Drive?')) {
-                            window.open(response.driveLink, '_blank');
+                        setSaveStatus({ type: 'success', message: '✅ Saved to Drive!' });
+                        
+                        // NEW LOGIC: Ask user if they want to open the file
+                        if (confirm('Saved! Open in Google Drive?')) {
+                            if (response.driveLink) {
+                                window.open(response.driveLink, '_blank');
+                            } else {
+                                alert("File saved, but no link was returned.");
+                            }
                         }
                     } else {
                         setSaveStatus({ type: 'error', message: `❌ Error: ${response?.error || 'Upload failed'}` });
@@ -192,9 +180,9 @@ const MindMap = ({ data, isLoading, fileName, onConfirmStart, onRegenerate, onCl
                     <div style={{ display: 'flex', gap: '10px' }}>
                         {data && !isLoading && (
                             <>
-                                <button onClick={handleDownloadLocal} style={localBtn}>📥 Download Full SVG</button>
+                                <button onClick={handleDownloadLocal} style={localBtn}>📥 SVG</button>
                                 <button onClick={handleSaveToDrive} disabled={isSavingToDrive} style={driveBtn}>
-                                    {isSavingToDrive ? '⏳ Saving...' : '📂 Save Full SVG to Drive'}
+                                    {isSavingToDrive ? '⏳ Saving...' : '📂 Drive'}
                                 </button>
                             </>
                         )}
@@ -203,31 +191,42 @@ const MindMap = ({ data, isLoading, fileName, onConfirmStart, onRegenerate, onCl
                 </div>
 
                 <div style={mapContainer}>
-                    {!hasConfirmed ? (
+                    {/* ENHANCED LOADING LOGIC */}
+                    {isLoading && data ? (
+                        <div style={centerFlex}>
+                            <div className="lms-loading-spinner" style={spinnerStyle}></div>
+                            <h3 style={{marginTop: '20px'}}>Llama-3 is re-drawing Knowledge Tree...</h3>
+                            <p style={{color: '#64748b'}}>Generating a fresh perspective from your document.</p>
+                        </div>
+                    ) : isLoading ? (
+                        <div style={centerFlex}>
+                            <div className="lms-loading-spinner" style={spinnerStyle}></div>
+                            <h3 style={{marginTop: '20px'}}>Checking Knowledge Base...</h3>
+                        </div>
+                    ) : data ? (
+                        <svg ref={svgRef} width="100%" height="100%" style={{cursor: 'move'}}></svg>
+                    ) : (
                         <div style={centerFlex}>
                             <div style={{fontSize: '60px'}}>🧠</div>
                             <h2>Generate Mind Map for "{fileName}"?</h2>
                             <button onClick={handleYesClick} style={bigBtn}>Yes, Generate Now</button>
                         </div>
-                    ) : isLoading ? (
-                        <div style={centerFlex}><div className="lms-loading-spinner" style={spinnerStyle}></div><h3>Architecting Knowledge Tree...</h3></div>
-                    ) : (
-                        <svg ref={svgRef} width="100%" height="100%" style={{cursor: 'move'}}></svg>
                     )}
                 </div>
 
                 <div style={footerStyle}>
                     <div style={{color: saveStatus?.type === 'error' ? 'red' : '#64748b', fontSize: '13px', fontWeight: 'bold'}}>
-                        {saveStatus?.message || '💡 Export captures the FULL map centered on a white background.'}
+                        {saveStatus?.message || '💡 Mind map cached in Firestore for instant access.'}
                     </div>
-                    {data && !isLoading && <button onClick={onRegenerate} style={backBtn}>🔄 Regenerate</button>}
+                    {data && !isLoading && (
+                        <button onClick={() => onRegenerate(true)} style={backBtn}>🔄 Regenerate</button>
+                    )}
                 </div>
             </motion.div>
         </AnimatePresence>
     );
 };
 
-// --- STYLES (MATCHING INTEGRATED UI) ---
 const overlayStyle = { position: 'fixed', inset: 0, zIndex: 1000005, backgroundColor: 'white', display: 'flex', flexDirection: 'column' };
 const headerStyle = { display: 'flex', justifyContent: 'space-between', padding: '15px 30px', borderBottom: '1px solid #e2e8f0', background: 'white' };
 const footerStyle = { display: 'flex', justifyContent: 'space-between', padding: '15px 30px', borderTop: '1px solid #e2e8f0', background: 'white' };
@@ -237,6 +236,6 @@ const bigBtn = { padding: '16px 40px', background: '#6366f1', color: 'white', bo
 const driveBtn = { background: '#22c55e', color: 'white', border: 'none', padding: '10px 18px', borderRadius: '10px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' };
 const localBtn = { background: '#6366f1', color: 'white', border: 'none', padding: '10px 18px', borderRadius: '10px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' };
 const backBtn = { background: 'white', border: '1px solid #ddd', padding: '10px 18px', borderRadius: '10px', cursor: 'pointer', fontWeight: 'bold' };
-const spinnerStyle = { width: '50px', height: '50px', border: '5px solid #e2e8f0', borderTop: '5px solid #6366f1', borderRadius: '50%' };
+const spinnerStyle = { width: '50px', height: '50px', border: '5px solid #e2e8f0', borderTop: '5px solid #6366f1', borderRadius: '50%', animation: 'lms-spin 1s linear infinite' };
 
 export default MindMap;

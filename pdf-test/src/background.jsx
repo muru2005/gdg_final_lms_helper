@@ -1,7 +1,7 @@
 /* global chrome */
 
 // Ensure this IP matches your current local machine IP running the Flask server
-const BACKEND_URL = 'http://192.168.0.3:5000';
+const BACKEND_URL = 'http://192.168.0.4:5000';
 
 // 1. SIDE PANEL SETUP
 chrome.runtime.onInstalled.addListener(() => {
@@ -60,6 +60,22 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     .then(data => sendResponse(data))
     .catch(err => {
         console.error("[Background] Drive Proxy Error:", err);
+        sendResponse({ ok: false, error: err.message });
+    });
+    return true;
+  }
+
+  // --- NEW: SAVE SUMMARY TO DRIVE PROXY (RESTORES CONNECTIVITY) ---
+  if (msg.action === 'SAVE_SUMMARY_TO_DRIVE') {
+    fetch(`${BACKEND_URL}/api/save-summary`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(msg.data)
+    })
+    .then(res => res.json())
+    .then(data => sendResponse(data))
+    .catch(err => {
+        console.error("[Background] Save Summary Proxy Error:", err);
         sendResponse({ ok: false, error: err.message });
     });
     return true;
