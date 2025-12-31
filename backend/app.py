@@ -11,6 +11,7 @@ from flask_cors import CORS
 from PyPDF2 import PdfReader
 from groq import Groq
 import chromadb
+from flask_cors import cross_origin
 from chromadb.utils import embedding_functions
 from dotenv import load_dotenv
 import asyncio
@@ -51,6 +52,8 @@ CORS(app, origins=["*"], supports_credentials=True)
 # AI Setup
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
+GA_MEASUREMENT_ID = os.getenv("GA_MEASUREMENT_ID")
+GA_API_SECRET = os.getenv("GA_API_SECRET")
 
 # ChromaDB Setup
 CHROMA_PATH = ".chromadb"
@@ -170,6 +173,57 @@ def process_file():
     except Exception as e:
         print(f"🔥 Process Error: {e}")
         return jsonify({"error": str(e)}), 500
+
+
+@app.route('/track-event', methods=['POST', 'OPTIONS'])
+@cross_origin()
+def track_event():
+    # 1. Handle Browser Preflight (CORS)
+    if request.method == 'OPTIONS':
+        return jsonify({"status": "ok"}), 200
+
+    # 2. Extract Data from Extension
+    data = request.json
+    event_name = data.get('name', 'unnamed_event')
+    params = data.get('params', {})
+    user_email = data.get('email', 'anonymous')
+
+    # 3. SETTINGS
+    # Changed to False so data actually reaches your dashboard
+    DEBUG = False 
+    endpoint = "mp/collect" if not DEBUG else "debug/mp/collect"
+    
+    url = f"https://www.google-analytics.com/{endpoint}?measurement_id={GA_MEASUREMENT_ID}&api_secret={GA_API_SECRET}"
+
+    # 4. THE PAYLOAD
+    # GA4 requires a client_id and specific session params to appear in Realtime
+    payload = {
+        "client_id": user_email if (user_email and user_email != 'anonymous') else "12345.67890",
+        "events": [{
+            "name": event_name[:40].replace("-", "_"), 
+            "params": {
+                **params,
+                "session_id": "1712215304", 
+                "engagement_time_msec": 100,
+                "debug_mode": 1 # Leave as 1 to see events in Admin > DebugView
+            }
+        }]
+    }
+
+    try:
+        # Send to Google
+        response = requests.post(url, json=payload, timeout=5)
+        
+        # Production returns 204 (No Content), Debug returns 200 (JSON)
+        return jsonify({
+            "status": "success", 
+            "google_response": response.status_code,
+            "mode": "production" if not DEBUG else "debug"
+        }), 200
+
+    except Exception as e:
+        print(f"❌ Analytics Error: {str(e)}")
+        return jsonify({"status": "error", "message": str(e)}), 500
 def extract_digital_id(email):
     match=re.search(r'(\d)@',email)
     if(match):

@@ -1,7 +1,7 @@
 /* global chrome */
 
 // Ensure this IP matches your current local machine IP running the Flask server
-const BACKEND_URL = 'http://192.168.0.4:5000';
+const BACKEND_URL = 'http://192.168.0.3:5000';
 
 // 1. SIDE PANEL SETUP
 chrome.runtime.onInstalled.addListener(() => {
@@ -64,7 +64,30 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     });
     return true;
   }
+  if (msg.action === 'TRACK_EVENT') {
+    const { name, params } = msg.payload;
 
+    // Use chrome.storage to pull the email for the Digital ID
+    chrome.storage.local.get(['userProfile'], (res) => {
+        const userEmail = res.userProfile?.email || "anonymous";
+
+        fetch(`${BACKEND_URL}/track-event`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name: name,
+                params: params,
+                email: userEmail // Forward the email to Flask for GA4 ClientID
+            })
+        })
+        .then(res => console.log("[Background] Analytics Sent:", name))
+        .catch(err => console.error("[Background] Analytics Error:", err));
+    });
+
+    // Send instant success to the UI so it doesn't wait
+    sendResponse({ ok: true });
+    return true; 
+  }
   // --- NEW: SAVE SUMMARY TO DRIVE PROXY (RESTORES CONNECTIVITY) ---
   if (msg.action === 'SAVE_SUMMARY_TO_DRIVE') {
     fetch(`${BACKEND_URL}/api/save-summary`, {
