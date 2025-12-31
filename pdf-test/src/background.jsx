@@ -48,7 +48,24 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     });
     return true;
   }
-
+  if (msg.type === 'SYNC_CALENDAR') {
+    console.log('[Background] Starting Calendar Sync...');
+    fetch(`${BACKEND_URL}/sync-calendar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: msg.token }) // Forwarding OAuth token to Flask
+    })
+    .then(res => res.json())
+    .then(data => {
+        console.log('[Background] Sync Response:', data);
+        sendResponse(data); 
+    })
+    .catch(err => {
+        console.error('[Background] Sync Fetch Error:', err);
+        sendResponse({ ok: false, error: err.message });
+    });
+    return true; // Keeps channel open for async response
+  }
   // --- DRIVE UPLOAD PROXY ---
   if (msg.action === 'UPLOAD_TO_DRIVE_PROXY') {
     fetch(`${BACKEND_URL}/api/upload-file-to-drive`, {
