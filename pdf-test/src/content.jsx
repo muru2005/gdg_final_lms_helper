@@ -3,7 +3,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
-import AIViewer from './AIViewer'; 
+import AIViewer from './AIViewer';
 
 // 1. INTEGRATED WORKSPACE INJECTION
 let rootElement = document.getElementById('lms-helper-integrated-overlay');
@@ -24,7 +24,7 @@ const workspaceRoot = createRoot(rootElement);
 const safeSendMessage = (msg, callback) => {
     if (chrome.runtime?.id) {
         chrome.runtime.sendMessage(msg, (res) => {
-            if (chrome.runtime.lastError) return; 
+            if (chrome.runtime.lastError) return;
             if (callback) callback(res);
         });
     }
@@ -47,34 +47,40 @@ const injectAIButtons = () => {
             marginLeft: '12px', position: 'relative', zIndex: '9999'
         });
 
+        // SVG icons for modern look (inline since this runs in page context)
+        const svgIcons = {
+            eye: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>',
+            brain: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2Z"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2Z"/></svg>',
+            file: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="16" x2="8" y1="13" y2="13"/><line x1="16" x2="8" y1="17" y2="17"/><line x1="10" x2="8" y1="9" y2="9"/></svg>'
+        };
         const tools = [
-            { label: '👁️', color: '#4f46e5', action: 'OPEN_FILE_VIEWER', tool: 'VIEW' },
-            { label: '🧠', color: '#0891b2', action: 'GENERATE_MINDMAP', tool: 'MINDMAP' },
-            { label: '📄', color: '#059669', action: 'GENERATE_SUMMARY', tool: 'SUMMARY' }
+            { label: svgIcons.eye, color: '#7c3aed', action: 'OPEN_FILE_VIEWER', tool: 'VIEW', title: 'View' },
+            { label: svgIcons.brain, color: '#0891b2', action: 'GENERATE_MINDMAP', tool: 'MINDMAP', title: 'Mind Map' },
+            { label: svgIcons.file, color: '#059669', action: 'GENERATE_SUMMARY', tool: 'SUMMARY', title: 'Summary' }
         ];
 
         tools.forEach(tool => {
             const btn = document.createElement('button');
             btn.innerHTML = tool.label;
-            btn.title = tool.action;
+            btn.title = tool.title;
             Object.assign(btn.style, {
-                backgroundColor: tool.color, color: 'white', border: 'none', 
-                borderRadius: '6px', padding: '3px 7px', fontSize: '12px', 
-                cursor: 'pointer', zIndex: '10000'
+                backgroundColor: tool.color, color: 'white', border: 'none',
+                borderRadius: '6px', padding: '5px 8px', fontSize: '12px',
+                cursor: 'pointer', zIndex: '10000', display: 'flex', alignItems: 'center'
             });
 
             const handleAction = (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                e.stopImmediatePropagation(); 
+                e.stopImmediatePropagation();
 
                 const aalink = item.querySelector('a.aalink');
                 const link = aalink?.href;
-                const cleanName = item.querySelector('.instancename')?.textContent.replace(/File|Assignment/gi, '').trim(); 
+                const cleanName = item.querySelector('.instancename')?.textContent.replace(/File|Assignment/gi, '').trim();
 
                 safeSendMessage({
-                    action: 'AI_TOOL_TRIGGERED', 
-                    tool: tool.tool, 
+                    action: 'AI_TOOL_TRIGGERED',
+                    tool: tool.tool,
                     fileName: cleanName,
                     fileUrl: link
                 });
@@ -179,8 +185,9 @@ const injectDownloadButton = () => {
     const header = document.querySelector('.page-header-headings') || document.querySelector('.header-actions-container');
     if (!header || document.getElementById('lms-helper-download-btn')) return;
     const btn = document.createElement('button');
-    btn.id = 'lms-helper-download-btn'; btn.innerText = "📥 Download Manager";
-    Object.assign(btn.style, { marginLeft: '15px', backgroundColor: '#0f6cbf', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' });
+    btn.id = 'lms-helper-download-btn';
+    btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg> Download Manager';
+    Object.assign(btn.style, { marginLeft: '15px', backgroundColor: '#7c3aed', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', display: 'inline-flex', alignItems: 'center' });
     btn.onclick = () => {
         const data = extractCourseMaterials();
         if (data.length) createDownloadModal(data);
@@ -192,16 +199,85 @@ const injectDownloadButton = () => {
 // --- DATA EXTRACTION ---
 const extractUserEmail = () => {
     try {
+        // Method 1: Look for email in user menu/profile links
+        const userLinks = document.querySelectorAll('a[href*="user/profile"], a[href*="user/view"], .usermenu a');
+        for (const link of userLinks) {
+            const text = link.textContent || link.getAttribute('title') || '';
+            const emailMatch = text.match(/[\w.-]+@[\w.-]+\.\w+/);
+            if (emailMatch) {
+                const email = emailMatch[0];
+                console.log('Found email in user menu:', email);
+                return { email, name: getUserName() };
+            }
+        }
+
+        // Method 2: Look in usertext/username elements
+        const userText = document.querySelector('.usertext, .username, [data-username]');
+        if (userText) {
+            const emailMatch = userText.textContent.match(/[\w.-]+@[\w.-]+\.\w+/);
+            if (emailMatch) {
+                const email = emailMatch[0];
+                console.log('Found email in user text:', email);
+                return { email, name: getUserName() };
+            }
+        }
+
+        // Method 3: Check page HTML/scripts for email
         const bodyText = document.body.innerHTML;
+        const emailMatch = bodyText.match(/["']email["']\s*:\s*["']([\w.-]+@[\w.-]+\.\w+)["']/);
+        if (emailMatch) {
+            const email = emailMatch[1];
+            console.log('Found email in page HTML:', email);
+            return { email, name: getUserName() };
+        }
+
+        // Method 4: Look for SSN email pattern specifically
         const ssnEmailMatch = bodyText.match(/([\w.-]+@ssn\.edu\.in)/);
-        if (ssnEmailMatch) return { email: ssnEmailMatch[1], name: getUserName() };
-        return { email: 'student@ssn.edu.in', name: getUserName() };
-    } catch (e) { return { email: '', name: '' }; }
+        if (ssnEmailMatch) {
+            const email = ssnEmailMatch[1];
+            console.log('Found SSN email:', email);
+            return { email, name: getUserName() };
+        }
+
+        console.warn('Could not extract email from LMS page');
+        return { email: '', name: getUserName() };
+    } catch (error) {
+        console.error('Error extracting email:', error);
+        return { email: '', name: '' };
+    }
 };
 
 const getUserName = () => {
-    const nameElement = document.querySelector('.usertext .text, .username, [data-username], .user-name');
-    return nameElement ? nameElement.textContent.trim() : 'Student';
+    try {
+        // Try to extract name from common LMS elements
+        const nameElement = document.querySelector(
+            '.usertext .text, .username, [data-username], .user-name, .fullname'
+        );
+        
+        if (nameElement) {
+            let name = nameElement.textContent.trim();
+            // Remove email if it's part of the name text
+            name = name.replace(/[\w.-]+@[\w.-]+\.\w+/, '').trim();
+            if (name) {
+                console.log('Found user name:', name);
+                return name;
+            }
+        }
+
+        // Try to get from page title or header
+        const pageHeader = document.querySelector('h1, .page-header-headings h1');
+        if (pageHeader) {
+            const text = pageHeader.textContent;
+            if (text && !text.includes('Dashboard') && !text.includes('LMS')) {
+                return text.trim();
+            }
+        }
+
+        return 'Student';
+    } catch (error) {
+        console.error('Error extracting name:', error);
+        return 'Student';
+    }
 };
 
 const extractCourses = () => {
@@ -225,9 +301,9 @@ const performDeepScan = async (sendResponse) => {
             try {
                 const html = await fetch(course.link).then(res => res.text());
                 const doc = new DOMParser().parseFromString(html, 'text/html');
-                
+
                 const assigns = Array.from(doc.querySelectorAll('.activity.modtype_assign'));
-                
+
                 return assigns.filter(item => {
                     const doneBtn = item.querySelector('button.btn-success');
                     const isDone = doneBtn?.textContent.trim().includes('Done') || !!item.querySelector('.fa-check');
@@ -270,7 +346,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 sendResponse({ success: true });
             }
         });
-        return true; 
+        return true;
     }
 
     if (request.action === 'getUserEmail') {
@@ -284,7 +360,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     if (request.action === 'deepExtractAssignments') {
         performDeepScan(sendResponse);
-        return true; 
+        return true;
     }
 });
 

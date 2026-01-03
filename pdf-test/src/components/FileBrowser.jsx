@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import FileViewer from './FileViewer';
+import { FileText, File, FileCode, Eye, Brain, AlignLeft, BookOpen } from 'lucide-react';
 
 const FileBrowser = () => {
     const [selectedFile, setSelectedFile] = useState(null);
-    
-    // Sample files - in real implementation, this would come from file system or API
+
     const sampleFiles = [
         { path: 'C:\\Documents\\sample.pdf', name: 'sample.pdf', type: 'pdf' },
         { path: 'C:\\Documents\\notes.txt', name: 'notes.txt', type: 'txt' },
@@ -15,13 +15,14 @@ const FileBrowser = () => {
     ];
 
     const getFileIcon = (type) => {
+        const iconProps = { size: 20 };
         const icons = {
-            pdf: '📄',
-            txt: '📝',
-            md: '📋',
-            py: '🐍',
-            js: '⚡',
-            default: '📁'
+            pdf: <FileText {...iconProps} className="text-rose-500" />,
+            txt: <File {...iconProps} className="text-slate-500" />,
+            md: <FileText {...iconProps} className="text-blue-500" />,
+            py: <FileCode {...iconProps} className="text-yellow-500" />,
+            js: <FileCode {...iconProps} className="text-amber-500" />,
+            default: <File {...iconProps} className="text-slate-400" />
         };
         return icons[type] || icons.default;
     };
@@ -31,7 +32,7 @@ const FileBrowser = () => {
 
         return (
             <motion.div
-                whileHover={{ scale: 1.02 }}
+                whileHover={{ scale: 1.01 }}
                 style={{
                     backgroundColor: 'white',
                     border: '1px solid #e2e8f0',
@@ -39,24 +40,25 @@ const FileBrowser = () => {
                     padding: '16px',
                     cursor: 'pointer',
                     position: 'relative',
-                    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
                     transition: 'all 0.2s ease'
                 }}
                 onMouseEnter={() => setShowActions(true)}
                 onMouseLeave={() => setShowActions(false)}
             >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <span style={{ fontSize: '24px' }}>{getFileIcon(file.type)}</span>
+                    <div className="p-2 rounded-lg bg-slate-50">
+                        {getFileIcon(file.type)}
+                    </div>
                     <div style={{ flex: 1 }}>
-                        <h4 style={{ margin: 0, fontSize: '16px', fontWeight: '600' }}>{file.name}</h4>
-                        <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: '#666' }}>{file.path}</p>
+                        <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 600, color: '#334155' }}>{file.name}</h4>
+                        <p style={{ margin: '4px 0 0 0', fontSize: '11px', color: '#94a3b8' }}>{file.path}</p>
                     </div>
                 </div>
 
-                {/* Three Action Buttons */}
                 {showActions && (
                     <motion.div
-                        initial={{ opacity: 0, y: 10 }}
+                        initial={{ opacity: 0, y: 5 }}
                         animate={{ opacity: 1, y: 0 }}
                         style={{
                             position: 'absolute',
@@ -64,10 +66,11 @@ const FileBrowser = () => {
                             right: '8px',
                             display: 'flex',
                             gap: '4px',
-                            backgroundColor: 'rgba(255,255,255,0.95)',
+                            backgroundColor: 'white',
                             padding: '4px',
                             borderRadius: '8px',
-                            boxShadow: '0 2px 8px rgba(0,0,0,0.15)'
+                            boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                            border: '1px solid #e2e8f0'
                         }}
                     >
                         <button
@@ -77,59 +80,66 @@ const FileBrowser = () => {
                             }}
                             style={{
                                 padding: '6px 10px',
-                                backgroundColor: '#007AFF',
+                                background: 'linear-gradient(135deg, #3b82f6, #2563eb)',
                                 color: 'white',
                                 border: 'none',
                                 borderRadius: '6px',
                                 cursor: 'pointer',
-                                fontSize: '12px',
-                                fontWeight: '600'
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px'
                             }}
                             title="View & Ask AI"
                         >
-                            👁️
+                            <Eye size={12} />
                         </button>
-                        
+
                         <button
                             onClick={(e) => {
                                 e.stopPropagation();
-                                // Handle mindmap generation
                                 console.log('Generate mindmap for:', file.name);
                             }}
                             style={{
                                 padding: '6px 10px',
-                                backgroundColor: '#10B981',
+                                background: 'linear-gradient(135deg, #10b981, #059669)',
                                 color: 'white',
                                 border: 'none',
                                 borderRadius: '6px',
                                 cursor: 'pointer',
-                                fontSize: '12px',
-                                fontWeight: '600'
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px'
                             }}
                             title="Generate Mind Map"
                         >
-                            🧠
+                            <Brain size={12} />
                         </button>
-                        
+
                         <button
                             onClick={(e) => {
                                 e.stopPropagation();
-                                // Handle summary generation
                                 console.log('Generate summary for:', file.name);
                             }}
                             style={{
                                 padding: '6px 10px',
-                                backgroundColor: '#8B5CF6',
+                                background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
                                 color: 'white',
                                 border: 'none',
                                 borderRadius: '6px',
                                 cursor: 'pointer',
-                                fontSize: '12px',
-                                fontWeight: '600'
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px'
                             }}
                             title="Generate Summary"
                         >
-                            📝
+                            <AlignLeft size={12} />
                         </button>
                     </motion.div>
                 )}
@@ -139,25 +149,29 @@ const FileBrowser = () => {
 
     return (
         <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto' }}>
-            <h1 style={{ marginBottom: '24px', fontSize: '28px', fontWeight: 'bold' }}>
-                📚 LMS Helper - File Browser
-            </h1>
-            
-            <p style={{ marginBottom: '32px', color: '#666', fontSize: '16px' }}>
-                Hover over any file to see the three action buttons: View & Ask AI, Generate Mind Map, and Generate Summary
+            <div className="flex items-center gap-3 mb-6">
+                <div className="p-2 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 text-white">
+                    <BookOpen size={20} />
+                </div>
+                <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 700, color: '#1e293b' }}>
+                    LMS Helper - File Browser
+                </h1>
+            </div>
+
+            <p style={{ marginBottom: '24px', color: '#64748b', fontSize: '14px' }}>
+                Hover over any file to see the action buttons: View & Ask AI, Generate Mind Map, and Generate Summary
             </p>
 
             <div style={{
                 display: 'grid',
                 gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
-                gap: '16px'
+                gap: '12px'
             }}>
                 {sampleFiles.map((file, index) => (
                     <FileCard key={index} file={file} />
                 ))}
             </div>
 
-            {/* File Viewer Modal */}
             {selectedFile && (
                 <FileViewer
                     filePath={selectedFile.path}

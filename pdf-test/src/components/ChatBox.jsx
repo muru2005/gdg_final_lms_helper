@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MarkdownRenderer } from '../utils/markdownParser.jsx';
-
+import { trackEvent } from '../utils/analytics.js';
 // FIX: Changed filePath to fileUrl to match your AIViewer props
 const ChatBox = ({ isOpen, onClose, fileUrl, fileName }) => {
     const [messages, setMessages] = useState([]);
@@ -16,7 +16,11 @@ const ChatBox = ({ isOpen, onClose, fileUrl, fileName }) => {
             scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
         }
     }, [messages]);
-
+    useEffect(() => {
+        if (isOpen) {
+            trackEvent('chat_box_opened', { file_name: fileName });
+        }
+    }, [isOpen]);
     // 2. MESSAGE LISTENER
     useEffect(() => {
         const messageListener = (request) => {
@@ -35,6 +39,10 @@ const ChatBox = ({ isOpen, onClose, fileUrl, fileName }) => {
         if (!input.trim()) return;
 
         const userMsg = input.trim();
+        trackEvent('user_chat_sent', { 
+            file_name: fileName,
+            message_length: userMsg.length 
+        })
         setMessages(prev => [...prev, { role: 'user', content: userMsg }]);
         setInput('');
         setLoading(true);

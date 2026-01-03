@@ -11,6 +11,7 @@ from flask_cors import CORS
 from PyPDF2 import PdfReader
 from groq import Groq
 import chromadb
+from flask_cors import cross_origin
 from chromadb.utils import embedding_functions
 from dotenv import load_dotenv
 import asyncio
@@ -22,6 +23,7 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 import firebase_admin
 from firebase_admin import credentials, firestore
+from dateutil import parser as date_parser
 import hashlib
 SCOPES = ["https://www.googleapis.com/auth/forms.body"]
 from drive import (
@@ -35,7 +37,7 @@ from firebase_admin import credentials, firestore
 from google.cloud.firestore_v1 import FieldFilter
 import smtplib
 import secrets
-from datetime import datetime
+from datetime import datetime,timedelta
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from googleapiclient.http import MediaIoBaseUpload
@@ -51,6 +53,8 @@ CORS(app, origins=["*"], supports_credentials=True)
 # AI Setup
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
+GA_MEASUREMENT_ID = os.getenv("GA_MEASUREMENT_ID")
+GA_API_SECRET = os.getenv("GA_API_SECRET")
 
 # ChromaDB Setup
 CHROMA_PATH = ".chromadb"
@@ -124,9 +128,147 @@ def get_file_collection(file_path: str):
         name=collection_name,
         embedding_function=embedding_function
     )
+def get_calendar_gmail_services(token):
+    """Builds the Calendar and Gmail services using the smuggled token."""
+    creds = Credentials(token=token)
+    cal_service = build('calendar', 'v3', credentials=creds)
+    gmail_service = build('gmail', 'v1', credentials=creds)
+    return cal_service, gmail_service
+
+def parse_dd_mm_yyyy(date_str):
+    """Standard SSN Date Parser"""
+    return datetime.strptime(date_str.strip(), "%d-%m-%Y").date()
+
+def delete_existing_calendar_event(service, summary, date_str):
+    """Finds and deletes any existing event with this summary on this date."""
+    target_date = parse_dd_mm_yyyy(date_str)
+    t_min = datetime.combine(target_date, datetime.min.time()).isoformat() + 'Z'
+    t_max = datetime.combine(target_date, datetime.max.time()).isoformat() + 'Z'
+    
+    events_result = service.events().list(
+        calendarId='primary', timeMin=t_min, timeMax=t_max, 
+        singleEvents=True, q=summary
+    ).execute()
+    
+    events = events_result.get('items', [])
+    for event in events:
+        if event.get('summary') == summary:
+            service.events().delete(calendarId='primary', eventId=event['id']).execute()
+
+def create_calendar_event_body(summary, start_str, end_str=None, description=""):
+    """Formats the JSON for Google Calendar API"""
+    start_date = parse_dd_mm_yyyy(start_str)
+    if end_str:
+        # Google Calendar 'end' for all-day events is exclusive (Day + 1)
+        end_date = parse_dd_mm_yyyy(end_str) + timedelta(days=1)
+    else:
+        end_date = start_date + timedelta(days=1)
+
+    return {
+        'summary': summary,
+        'description': description,
+        'start': {'date': start_date.isoformat(), 'timeZone': 'Asia/Kolkata'},
+        'end': {'date': end_date.isoformat(), 'timeZone': 'Asia/Kolkata'},
+    }
 
 # --- API ROUTES ---
+@app.route('/sync-calendar', methods=['POST', 'OPTIONS'])
+@cross_origin()
+def sync_calendar():
+    if request.method == 'OPTIONS':
+        return jsonify({"status": "ok"}), 200
 
+    data = request.json
+    token = data.get('token')
+    if not token: 
+        return jsonify({"ok": False, "error": "No token provided"}), 400
+
+    try:
+        cal_service, gmail_service = get_calendar_gmail_services(token)
+        today = datetime.now().date()
+        stats = {"circulars_synced": 0, "academic_events_refreshed": 0}
+
+        # 1. REFRESH GMAIL CIRCULARS (Search principal's office)
+        query = 'from:principalsoffice@ssn.edu.in newer_than:7d'
+        results = gmail_service.users().messages().list(userId='me', q=query).execute()
+        
+        for msg in results.get('messages', []):
+            msg_data = gmail_service.users().messages().get(userId='me', id=msg['id']).execute()
+            content = msg_data.get('snippet', '')
+            
+            # 🔍 REFINED REGEX: Non-greedy match (.*?) stops at the first date it finds
+            pattern = r'(working day|holiday)\s+(?:on|for)\s+(.*?(?:202\d|January|February|March|April|May|June|July|August|September|October|November|December))'
+            matches = re.finditer(pattern, content, re.IGNORECASE)
+            
+            for match in matches:
+                e_type = match.group(1).title()
+                date_text = match.group(2).strip()
+                summary = f"SSN: {e_type}"
+                
+                print(f"🔍 Processing: {e_type} | Text: '{date_text}'")
+                
+                try:
+                    # Extract ALL numbers (days) from this specific match
+                    days = re.findall(r'\d+', date_text)
+                    
+                    # Find the month in the snippet
+                    month_match = re.search(r'(January|February|March|April|May|June|July|August|September|October|November|December)', content, re.IGNORECASE)
+                    month_str = month_match.group(0) if month_match else "January"
+
+                    for day in days:
+                        # 🚨 FIX: Prevent year duplication. 
+                        # Only add 2026 if the 'day' isn't already 2026
+                        if int(day) > 31: continue # Skip if the "day" is actually a year
+                        
+                        clean_date_str = f"{day} {month_str} 2026"
+                        
+                        # 📅 PARSE
+                        target_date = date_parser.parse(clean_date_str).date()
+
+                        if target_date >= today:
+                            d_str = target_date.strftime("%d-%m-%Y")
+                            delete_existing_calendar_event(cal_service, summary, d_str)
+                            body = create_calendar_event_body(summary, d_str, description="SSN Admin Circular Sync")
+                            cal_service.events().insert(calendarId='primary', body=body).execute()
+                            
+                            stats["circulars_synced"] += 1
+                            print(f"✅ SYNCED: {summary} on {d_str}")
+                            
+                except Exception as e:
+                    print(f"⚠️ Error parsing '{date_text}': {e}")
+        # 2. REFRESH FIXED ACADEMIC SCHEDULE
+        academic_events = [
+            {"summary": "Commencement of Classes (Even Sem)", "start": "15-12-2025", "end": None, "desc": "Academic Schedule 2025-2026"},
+            {"summary": "CAT-1 Exams", "start": "30-01-2026", "end": "06-02-2026", "desc": "Continuous Assessment Test 1"},
+            {"summary": "Submission of Attendance & CAT-1 Marks", "start": "13-02-2026", "end": None, "desc": "For period 15-12-2025 to 06-02-2026"},
+            {"summary": "CAT-2 Exams & CAT-1 for TCP", "start": "17-03-2026", "end": "24-03-2026", "desc": "CAT-2 and CAT-1 for TCP"},
+            {"summary": "Submission of Attendance & CAT-2 Marks", "start": "31-03-2026", "end": None, "desc": "For period 09-02-2026 to 24-03-2026"},
+            {"summary": "Supplementary Assessment Test (SAT)", "start": "30-03-2026", "end": "01-04-2026", "desc": "SAT"},
+            {"summary": "CAT-2 (TCP) & Model Practicals", "start": "02-04-2026", "end": "09-04-2026", "desc": "CAT-2 (TCP) & Model Practicals"},
+            {"summary": "Last Working Day", "start": "09-04-2026", "end": None, "desc": "Last working day for Even Semester"},
+            {"summary": "Final Submission (Attendance/Marks)", "start": "09-04-2026", "end": None, "desc": "Submission of marks"},
+            {"summary": "End Semester Practical Exams", "start": "10-04-2026", "end": "17-04-2026", "desc": "Including TCP courses"},
+            {"summary": "End Semester Theory Exams Commence", "start": "24-04-2026", "end": None, "desc": "Commencement of Theory Exams"},
+            {"summary": "Re-opening of Higher Semesters (2026-27)", "start": "22-06-2026", "end": None, "desc": "Odd Semester 2026-2027"}
+        ]
+
+        for event in academic_events:
+            delete_existing_calendar_event(cal_service, event['summary'], event['start'])
+            # Pass the 'desc' if your create_calendar_event_body supports it
+            body = create_calendar_event_body(
+                event['summary'], 
+                event['start'], 
+                event.get('end'), 
+                description=event.get('desc', '')
+            )
+            cal_service.events().insert(calendarId='primary', body=body).execute()
+            stats["academic_events_refreshed"] += 1
+
+        return jsonify({"ok": True, "message": "Demo Refresh Complete!", "details": stats})
+    except Exception as e:
+        print(f"❌ Calendar Sync Error: {str(e)}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+    
 @app.route('/process-file', methods=['POST'])
 def process_file():
     """Receives file bytes from extension and indexes them"""
@@ -170,6 +312,57 @@ def process_file():
     except Exception as e:
         print(f"🔥 Process Error: {e}")
         return jsonify({"error": str(e)}), 500
+
+
+@app.route('/track-event', methods=['POST', 'OPTIONS'])
+@cross_origin()
+def track_event():
+    # 1. Handle Browser Preflight (CORS)
+    if request.method == 'OPTIONS':
+        return jsonify({"status": "ok"}), 200
+
+    # 2. Extract Data from Extension
+    data = request.json
+    event_name = data.get('name', 'unnamed_event')
+    params = data.get('params', {})
+    user_email = data.get('email', 'anonymous')
+
+    # 3. SETTINGS
+    # Changed to False so data actually reaches your dashboard
+    DEBUG = False 
+    endpoint = "mp/collect" if not DEBUG else "debug/mp/collect"
+    
+    url = f"https://www.google-analytics.com/{endpoint}?measurement_id={GA_MEASUREMENT_ID}&api_secret={GA_API_SECRET}"
+
+    # 4. THE PAYLOAD
+    # GA4 requires a client_id and specific session params to appear in Realtime
+    payload = {
+        "client_id": user_email if (user_email and user_email != 'anonymous') else "12345.67890",
+        "events": [{
+            "name": event_name[:40].replace("-", "_"), 
+            "params": {
+                **params,
+                "session_id": "1712215304", 
+                "engagement_time_msec": 100,
+                "debug_mode": 1 # Leave as 1 to see events in Admin > DebugView
+            }
+        }]
+    }
+
+    try:
+        # Send to Google
+        response = requests.post(url, json=payload, timeout=5)
+        
+        # Production returns 204 (No Content), Debug returns 200 (JSON)
+        return jsonify({
+            "status": "success", 
+            "google_response": response.status_code,
+            "mode": "production" if not DEBUG else "debug"
+        }), 200
+
+    except Exception as e:
+        print(f"❌ Analytics Error: {str(e)}")
+        return jsonify({"status": "error", "message": str(e)}), 500
 def extract_digital_id(email):
     match=re.search(r'(\d)@',email)
     if(match):
@@ -704,7 +897,7 @@ def send_email(to_email, subject, html_body, text_body):
         print(f"Email send error: {e}")
         return False
 
-def create_assignment_email_html(user_name: str, assignments: list, unsubscribe_token: str) -> str:
+def create_assignment_email_html(user_name: str, assignments: list,user_email, unsubscribe_token: str) -> str:
     """Create HTML email content for pending assignments"""
     assignment_rows = ""
     for idx, assignment in enumerate(assignments, 1):
@@ -718,26 +911,27 @@ def create_assignment_email_html(user_name: str, assignments: list, unsubscribe_
         url = assignment.get('url', '#')
         status = assignment.get('status', 'pending')
         status_emoji = '⚠️' if status == 'overdue' else '⏰'
-        
+        submit_url = f"{BASE_URL}/api/mark-submitted?email={user_email}&id={assignment['id']}&token={unsubscribe_token}"
         assignment_rows += f"""
         <tr>
             <td style="padding: 15px; border-bottom: 1px solid #e9ecef;">
                 <div style="margin-bottom: 5px;">
-                    <strong style="font-size: 16px; color: #2c3e50;">{idx}. {title}</strong>
+                    <strong style="font-size: 16px; color: #2c3e50;">{idx}. {assignment.get('title')}</strong>
                 </div>
-                <div style="color: #6c757d; font-size: 14px; margin-left: 16px;">
-                    📚 {course_name}
-                </div>
-                <div style="color: {'#dc3545' if status == 'overdue' else '#e74c3c'}; font-size: 14px; margin-left: 16px; margin-top: 5px;">
-                    {status_emoji} Due: {due_date}
-                </div>
-                <div style="margin-left: 16px; margin-top: 8px;">
-                    <a href="{url}" style="color: #007bff; text-decoration: none; font-size: 14px;">
-                        View Assignment →
+                <div style="color: #6c757d; font-size: 14px;">📚 {assignment.get('courseName')}</div>
+                <div style="color: #e74c3c; font-size: 14px; margin-top: 5px;">⏰ Due: {assignment.get('dueDate')}</div>
+                
+                <div style="margin-top: 10px;">
+                    <a href="{submit_url}" style="display: inline-block; background-color: #10b981; color: white; padding: 6px 12px; text-decoration: none; border-radius: 6px; font-size: 12px; font-weight: bold;">
+                        ✅ Mark as Submitted
+                    </a>
+                    <a href="{assignment.get('url', '#')}" style="margin-left: 10px; color: #6366f1; text-decoration: none; font-size: 12px;">
+                        View on LMS →
                     </a>
                 </div>
             </td>
         </tr>
+
         """
     
     unsubscribe_url = f"{BASE_URL}/unsubscribe?token={unsubscribe_token}"
@@ -941,7 +1135,56 @@ def get_assignments():
         
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+@app.route("/api/mark-submitted")
+def mark_submitted():
+    """Marks an assignment as submitted from an email link"""
+    email = request.args.get("email")
+    assignment_id = request.args.get("id")
+    token = request.args.get("token")
 
+    if not email or not assignment_id or not token:
+        return "Invalid Request", 400
+
+    try:
+        # Security: Verify the unsubscribe token matches the user
+        user_ref = db.collection("users").document(email)
+        user_doc = user_ref.get()
+        
+        if not user_doc.exists or user_doc.to_dict().get("unsubscribe_token") != token:
+            return "Unauthorized", 401
+
+        # Update the specific assignment status
+        assignment_ref = user_ref.collection("assignments").document(assignment_id)
+        assignment_ref.update({
+            "status": "submitted",
+            "submitted_at": firestore.SERVER_TIMESTAMP
+        })
+
+        print(f"✅ Assignment {assignment_id} marked as submitted for {email}")
+
+        return """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <style>
+                body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #f0fdf4; }
+                .card { background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); text-align: center; }
+                h2 { color: #16a34a; }
+            </style>
+        </head>
+        <body>
+            <div class="card">
+                <h2>Done! 🎉</h2>
+                <p>Assignment marked as <strong>Submitted</strong>.</p>
+                <p>It will no longer appear in your reminder emails.</p>
+            </div>
+        </body>
+        </html>
+        """
+    except Exception as e:
+        print(f"❌ Error marking submitted: {e}")
+        return "An error occurred", 500
+    
 def send_assignment_reminders():
     """
     Send email reminders to all users with assignments
@@ -969,19 +1212,21 @@ def send_assignment_reminders():
                 
                 # Get user's assignments
                 assignments_ref = user_doc.reference.collection("assignments")
+                pending_query = assignments_ref.where(filter=FieldFilter("status", "!=", "submitted"))
+
                 assignments = []
-                for assignment_doc in assignments_ref.stream():
+                for assignment_doc in pending_query.stream():
                     assignment = assignment_doc.to_dict()
                     assignment["id"] = assignment_doc.id
                     assignments.append(assignment)
+                # --- END OF THE SNIPPET ---
                 
-                # Skip if no assignments
                 if not assignments:
-                    print(f"ℹ️ No assignments for {user_email}, skipping")
+                    print(f"ℹ️ No pending assignments for {user_email}, skipping email.")
                     continue
                 
-                # Create email content
-                html_content = create_assignment_email_html(user_name, assignments, unsubscribe_token)
+                # Create email content with the new link parameters
+                html_content = create_assignment_email_html(user_name, assignments, user_email, unsubscribe_token)
                 
                 text_content = f"""
 Hi {user_name}!

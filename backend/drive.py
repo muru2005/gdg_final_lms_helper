@@ -8,6 +8,9 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 from googleapiclient.http import MediaFileUpload
 import tempfile
 import os
+import re
+import time
+from fpdf import FPDF
 
 def get_drive_service(user_tokens: dict):
     creds = Credentials(

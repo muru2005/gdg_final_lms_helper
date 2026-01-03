@@ -48,7 +48,24 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     });
     return true;
   }
-
+  if (msg.type === 'SYNC_CALENDAR') {
+    console.log('[Background] Starting Calendar Sync...');
+    fetch(`${BACKEND_URL}/sync-calendar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: msg.token }) // Forwarding OAuth token to Flask
+    })
+    .then(res => res.json())
+    .then(data => {
+        console.log('[Background] Sync Response:', data);
+        sendResponse(data); 
+    })
+    .catch(err => {
+        console.error('[Background] Sync Fetch Error:', err);
+        sendResponse({ ok: false, error: err.message });
+    });
+    return true; // Keeps channel open for async response
+  }
   // --- DRIVE UPLOAD PROXY ---
   if (msg.action === 'UPLOAD_TO_DRIVE_PROXY') {
     fetch(`${BACKEND_URL}/api/upload-file-to-drive`, {
@@ -64,7 +81,30 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     });
     return true;
   }
+  if (msg.action === 'TRACK_EVENT') {
+    const { name, params } = msg.payload;
 
+    // Use chrome.storage to pull the email for the Digital ID
+    chrome.storage.local.get(['userProfile'], (res) => {
+        const userEmail = res.userProfile?.email || "anonymous";
+
+        fetch(`${BACKEND_URL}/track-event`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name: name,
+                params: params,
+                email: userEmail // Forward the email to Flask for GA4 ClientID
+            })
+        })
+        .then(res => console.log("[Background] Analytics Sent:", name))
+        .catch(err => console.error("[Background] Analytics Error:", err));
+    });
+
+    // Send instant success to the UI so it doesn't wait
+    sendResponse({ ok: true });
+    return true; 
+  }
   // --- NEW: SAVE SUMMARY TO DRIVE PROXY (RESTORES CONNECTIVITY) ---
   if (msg.action === 'SAVE_SUMMARY_TO_DRIVE') {
     fetch(`${BACKEND_URL}/api/save-summary`, {

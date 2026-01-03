@@ -5,6 +5,7 @@ import SummaryModal from './components/SummaryModal';
 import MindMap from './components/MindMap';
 import ChatBox from './components/ChatBox';
 import QuizModal from './components/QuizModal';
+import { trackEvent } from './utils/analytics';
 
 const AIViewer = () => {
     const [mode, setMode] = useState('VIEW'); 
@@ -15,7 +16,14 @@ const AIViewer = () => {
     const [mindMapData, setMindMapData] = useState(null);
     const [quizUrl, setQuizUrl] = useState(null); // Added state for Quiz URL
     const [isProcessing, setIsProcessing] = useState(false);
-
+    useEffect(() => {
+        if (currentFile) {
+            trackEvent('viewer_opened', { 
+                file_name: currentFile.name,
+                initial_mode: mode 
+            });
+        }
+    }, [currentFile?.name]);
     // --- 1. INITIAL SYNC & MESSAGE LISTENER ---
     useEffect(() => {
         const syncFromStorage = () => {
@@ -46,17 +54,20 @@ const AIViewer = () => {
             if (request.action === 'RECEIVE_GENERATE_SUMMARY') {
                 setSummaryData(request.payload.summary);
                 setIsProcessing(false);
+               trackEvent('summary_ready');
             }
             
             if (request.action === 'RECEIVE_GENERATE_MINDMAP') {
                 const data = request.payload.mindmap || request.payload;
                 setMindMapData(data);
                 setIsProcessing(false);
+                trackEvent('mindmap_ready');
             }
 
             // --- ADDED: Handle Quiz Response ---
             if (request.action === 'RECEIVE_GENERATE_QUIZ') {
                console.log("📥 Quiz Received:", request.payload);
+               trackEvent('quiz_ready');
     
     // FIX: Change 'quiz_url' to 'formUrl' to match your Flask backend
     if (request.payload.formUrl) {
@@ -66,6 +77,7 @@ const AIViewer = () => {
     }
     
     setIsProcessing(false);
+       
             }
         };
 
@@ -92,9 +104,10 @@ const AIViewer = () => {
         const path = currentFile?.fileUrl || currentFile?.url;
         if (!path) return;
         setIsProcessing(true);
+       
         chrome.storage.local.get(['userProfile', 'sessionToken'], (res) => {
         console.log("🔑 Quiz Debug: Token exists?", !!res.sessionToken);
-        
+        trackEvent('start_quiz_gen', { 'file': currentFile.name });
         chrome.runtime.sendMessage({ 
             action: 'GENERATE_QUIZ', 
             data: { 
@@ -112,6 +125,7 @@ const AIViewer = () => {
         const path = currentFile?.fileUrl || currentFile?.url;
         if (!path) return;
         setIsProcessing(true);
+         trackEvent('start_summary_gen', { 'file': currentFile.name });
         chrome.storage.local.get(['userProfile'], (res) => {
             chrome.runtime.sendMessage({ action: 'GENERATE_SUMMARY', data: { file_path: path, fileName: currentFile.name, email: res.userProfile?.email || "unknown@ssn.edu.in", forceRefresh: force } });
         });
@@ -121,6 +135,7 @@ const AIViewer = () => {
         const path = currentFile?.fileUrl || currentFile?.url;
         if (!path) return;
         setIsProcessing(true);
+          trackEvent('start_mindmap_gen', { 'file': currentFile.name });
         chrome.storage.local.get(['userProfile'], (res) => {
             chrome.runtime.sendMessage({ action: 'GENERATE_MINDMAP', data: { file_path: path, fileName: currentFile.name, email: res.userProfile?.email || "unknown@ssn.edu.in", forceRefresh: force } });
         });

@@ -20,7 +20,8 @@ dist-ssr
 *.local
 
 # Firebase service account (DO NOT COMMIT)
-firebase-service-account.json
+backend/firebase-service-account.json
+pdf-test/manifest.json
 
 # Editor directories and files
 .vscode/*
