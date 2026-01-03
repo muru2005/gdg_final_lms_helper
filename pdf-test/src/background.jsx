@@ -1,7 +1,7 @@
 /* global chrome */
 
 // Ensure this IP matches your current local machine IP running the Flask server
-const BACKEND_URL = 'http://192.168.1.6:5000';
+const BACKEND_URL = 'http://192.168.0.4:5000';
 
 // 1. SIDE PANEL SETUP
 chrome.runtime.onInstalled.addListener(() => {

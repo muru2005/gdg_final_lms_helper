@@ -63,7 +63,7 @@ embedding_function = embedding_functions.SentenceTransformerEmbeddingFunction(
     model_name="all-MiniLM-L6-v2"
 )
 # Firebase Setup
-cred = credentials.Certificate("firebase-service-account1.json")
+cred = credentials.Certificate("firebase-service-account.json")
 firebase_admin.initialize_app(cred)
 
 db = firestore.client()
@@ -897,7 +897,7 @@ def send_email(to_email, subject, html_body, text_body):
         print(f"Email send error: {e}")
         return False
 
-def create_assignment_email_html(user_name: str, assignments: list, unsubscribe_token: str) -> str:
+def create_assignment_email_html(user_name: str, assignments: list,user_email, unsubscribe_token: str) -> str:
     """Create HTML email content for pending assignments"""
     assignment_rows = ""
     for idx, assignment in enumerate(assignments, 1):
@@ -911,26 +911,27 @@ def create_assignment_email_html(user_name: str, assignments: list, unsubscribe_
         url = assignment.get('url', '#')
         status = assignment.get('status', 'pending')
         status_emoji = '⚠️' if status == 'overdue' else '⏰'
-        
+        submit_url = f"{BASE_URL}/api/mark-submitted?email={user_email}&id={assignment['id']}&token={unsubscribe_token}"
         assignment_rows += f"""
         <tr>
             <td style="padding: 15px; border-bottom: 1px solid #e9ecef;">
                 <div style="margin-bottom: 5px;">
-                    <strong style="font-size: 16px; color: #2c3e50;">{idx}. {title}</strong>
+                    <strong style="font-size: 16px; color: #2c3e50;">{idx}. {assignment.get('title')}</strong>
                 </div>
-                <div style="color: #6c757d; font-size: 14px; margin-left: 16px;">
-                    📚 {course_name}
-                </div>
-                <div style="color: {'#dc3545' if status == 'overdue' else '#e74c3c'}; font-size: 14px; margin-left: 16px; margin-top: 5px;">
-                    {status_emoji} Due: {due_date}
-                </div>
-                <div style="margin-left: 16px; margin-top: 8px;">
-                    <a href="{url}" style="color: #007bff; text-decoration: none; font-size: 14px;">
-                        View Assignment →
+                <div style="color: #6c757d; font-size: 14px;">📚 {assignment.get('courseName')}</div>
+                <div style="color: #e74c3c; font-size: 14px; margin-top: 5px;">⏰ Due: {assignment.get('dueDate')}</div>
+                
+                <div style="margin-top: 10px;">
+                    <a href="{submit_url}" style="display: inline-block; background-color: #10b981; color: white; padding: 6px 12px; text-decoration: none; border-radius: 6px; font-size: 12px; font-weight: bold;">
+                        ✅ Mark as Submitted
+                    </a>
+                    <a href="{assignment.get('url', '#')}" style="margin-left: 10px; color: #6366f1; text-decoration: none; font-size: 12px;">
+                        View on LMS →
                     </a>
                 </div>
             </td>
         </tr>
+
         """
     
     unsubscribe_url = f"{BASE_URL}/unsubscribe?token={unsubscribe_token}"
@@ -1134,7 +1135,56 @@ def get_assignments():
         
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+@app.route("/api/mark-submitted")
+def mark_submitted():
+    """Marks an assignment as submitted from an email link"""
+    email = request.args.get("email")
+    assignment_id = request.args.get("id")
+    token = request.args.get("token")
 
+    if not email or not assignment_id or not token:
+        return "Invalid Request", 400
+
+    try:
+        # Security: Verify the unsubscribe token matches the user
+        user_ref = db.collection("users").document(email)
+        user_doc = user_ref.get()
+        
+        if not user_doc.exists or user_doc.to_dict().get("unsubscribe_token") != token:
+            return "Unauthorized", 401
+
+        # Update the specific assignment status
+        assignment_ref = user_ref.collection("assignments").document(assignment_id)
+        assignment_ref.update({
+            "status": "submitted",
+            "submitted_at": firestore.SERVER_TIMESTAMP
+        })
+
+        print(f"✅ Assignment {assignment_id} marked as submitted for {email}")
+
+        return """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <style>
+                body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #f0fdf4; }
+                .card { background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); text-align: center; }
+                h2 { color: #16a34a; }
+            </style>
+        </head>
+        <body>
+            <div class="card">
+                <h2>Done! 🎉</h2>
+                <p>Assignment marked as <strong>Submitted</strong>.</p>
+                <p>It will no longer appear in your reminder emails.</p>
+            </div>
+        </body>
+        </html>
+        """
+    except Exception as e:
+        print(f"❌ Error marking submitted: {e}")
+        return "An error occurred", 500
+    
 def send_assignment_reminders():
     """
     Send email reminders to all users with assignments
@@ -1162,19 +1212,21 @@ def send_assignment_reminders():
                 
                 # Get user's assignments
                 assignments_ref = user_doc.reference.collection("assignments")
+                pending_query = assignments_ref.where(filter=FieldFilter("status", "!=", "submitted"))
+
                 assignments = []
-                for assignment_doc in assignments_ref.stream():
+                for assignment_doc in pending_query.stream():
                     assignment = assignment_doc.to_dict()
                     assignment["id"] = assignment_doc.id
                     assignments.append(assignment)
+                # --- END OF THE SNIPPET ---
                 
-                # Skip if no assignments
                 if not assignments:
-                    print(f"ℹ️ No assignments for {user_email}, skipping")
+                    print(f"ℹ️ No pending assignments for {user_email}, skipping email.")
                     continue
                 
-                # Create email content
-                html_content = create_assignment_email_html(user_name, assignments, unsubscribe_token)
+                # Create email content with the new link parameters
+                html_content = create_assignment_email_html(user_name, assignments, user_email, unsubscribe_token)
                 
                 text_content = f"""
 Hi {user_name}!
