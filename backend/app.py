@@ -63,7 +63,7 @@ embedding_function = embedding_functions.SentenceTransformerEmbeddingFunction(
     model_name="all-MiniLM-L6-v2"
 )
 # Firebase Setup
-cred = credentials.Certificate("firebase-service-account.json")
+cred = credentials.Certificate("firebase-service-account1.json")
 firebase_admin.initialize_app(cred)
 
 db = firestore.client()

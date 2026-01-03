@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { BookOpen, Clock, Download, Sparkles, FileText, Mail, GitBranch, Send, Check } from 'lucide-react';
+import { BookOpen, Clock, Download, Sparkles, FileText, Mail, GitBranch, Check } from 'lucide-react';
 
 const Home = () => {
   const navigate = useNavigate();
@@ -47,8 +47,7 @@ const Home = () => {
     { title: 'Slide Explanation', desc: 'Get AI-powered explanations of current slides', icon: Sparkles },
     { title: 'PDF Summarization', desc: 'Automatically summarize entire PDFs', icon: FileText },
     { title: 'Gmail Integration', desc: 'Sync announcements with your Gmail and Calendar', icon: Mail },
-    { title: 'Concept Maps', desc: 'Generate interactive concept maps from your notes', icon: GitBranch },
-    { title: 'Assignment Submission', desc: 'Submit assignments directly from the side panel', icon: Send }
+    { title: 'Concept Maps', desc: 'Generate interactive concept maps from your notes', icon: GitBranch }
   ];
 
   return (

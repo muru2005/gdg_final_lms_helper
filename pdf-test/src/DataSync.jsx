@@ -184,23 +184,10 @@ const DataSync = () => {
         Click below to fetch your Semester courses from the LMS website.
       </p>
 
-      {/* User Info Card */}
-      {userInfo && (
-        <div className="mb-5 p-4 bg-white rounded-xl border border-slate-100 shadow-sm w-full max-w-xs">
-          <div className="flex items-center gap-2 text-slate-600 text-sm">
-            <Mail size={14} />
-            <span className="font-medium">{userInfo.email}</span>
-          </div>
-          <p className="text-xs text-slate-400 mt-1.5">
-            Email reminders will be enabled
-          </p>
-        </div>
-      )}
-
       {/* Sync Button */}
       <button
         onClick={handleSync}
-        className="px-8 py-3.5 rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 text-white font-semibold text-base shadow-lg shadow-violet-200 transition-all duration-200 flex items-center gap-2"
+        className="cursor-pointer px-8 py-3.5 rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 text-white font-semibold text-base shadow-lg shadow-violet-200 transition-all duration-200 flex items-center gap-2"
       >
         <Download size={18} />
         Extract Now

@@ -61,7 +61,7 @@ const Courses = () => {
   return (
     <div className="min-h-screen font-sans">
       {/* Search Bar */}
-      <div className="sticky top-0 z-10 pb-4 bg-slate-50">
+      <div className="z-10 pb-4 bg-slate-50">
         <div className="relative group">
           <Search
             size={16}

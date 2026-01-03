@@ -59,11 +59,11 @@ const SummaryModal = ({ isOpen, data, isLoading, fileName, onConfirmStart, onReg
                 }
 
                 const title = fileName ? fileName.replace(/\.(pdf|docx?|txt)$/i, '') : 'Summary';
-                const subject = prompt('Enter subject:', 'General');
+                const subject = prompt('Enter subject:', '');
                 if (!subject) { setIsSavingToDrive(false); return; }
 
                 const cleanBody = cleanMarkdownForDocs(data);
-                const formattedHtml = `<html><body><h1>${title}</h1><p><b>Subject:</b> ${subject}</p><div>${cleanBody}</div></body></html>`;
+                const formattedHtml = `<html><body><h1>${title}</h1><p><b>Subject:</b> ${subject}</p><div>${cleanBody.slice(1)}</div></body></html>`;
 
                 chrome.runtime.sendMessage({
                     action: 'SAVE_SUMMARY_TO_DRIVE',
@@ -94,10 +94,10 @@ const SummaryModal = ({ isOpen, data, isLoading, fileName, onConfirmStart, onReg
         const lines = cleanText.split('\n');
         let y = 20;
         doc.setFontSize(18);
-        doc.text("Document Summary", 105, y, { align: "center" });
+        doc.text(lines[0], 105, y, { align: "center" });
         y += 25;
         doc.setFontSize(11);
-        lines.forEach(line => {
+        lines.slice(1).forEach(line => {
             const wrappedLines = doc.splitTextToSize(line, 180);
             wrappedLines.forEach(wl => {
                 if (y > 280) { doc.addPage(); y = 20; }

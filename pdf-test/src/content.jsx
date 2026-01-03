@@ -199,16 +199,85 @@ const injectDownloadButton = () => {
 // --- DATA EXTRACTION ---
 const extractUserEmail = () => {
     try {
+        // Method 1: Look for email in user menu/profile links
+        const userLinks = document.querySelectorAll('a[href*="user/profile"], a[href*="user/view"], .usermenu a');
+        for (const link of userLinks) {
+            const text = link.textContent || link.getAttribute('title') || '';
+            const emailMatch = text.match(/[\w.-]+@[\w.-]+\.\w+/);
+            if (emailMatch) {
+                const email = emailMatch[0];
+                console.log('Found email in user menu:', email);
+                return { email, name: getUserName() };
+            }
+        }
+
+        // Method 2: Look in usertext/username elements
+        const userText = document.querySelector('.usertext, .username, [data-username]');
+        if (userText) {
+            const emailMatch = userText.textContent.match(/[\w.-]+@[\w.-]+\.\w+/);
+            if (emailMatch) {
+                const email = emailMatch[0];
+                console.log('Found email in user text:', email);
+                return { email, name: getUserName() };
+            }
+        }
+
+        // Method 3: Check page HTML/scripts for email
         const bodyText = document.body.innerHTML;
+        const emailMatch = bodyText.match(/["']email["']\s*:\s*["']([\w.-]+@[\w.-]+\.\w+)["']/);
+        if (emailMatch) {
+            const email = emailMatch[1];
+            console.log('Found email in page HTML:', email);
+            return { email, name: getUserName() };
+        }
+
+        // Method 4: Look for SSN email pattern specifically
         const ssnEmailMatch = bodyText.match(/([\w.-]+@ssn\.edu\.in)/);
-        if (ssnEmailMatch) return { email: ssnEmailMatch[1], name: getUserName() };
-        return { email: 'student@ssn.edu.in', name: getUserName() };
-    } catch (e) { return { email: '', name: '' }; }
+        if (ssnEmailMatch) {
+            const email = ssnEmailMatch[1];
+            console.log('Found SSN email:', email);
+            return { email, name: getUserName() };
+        }
+
+        console.warn('Could not extract email from LMS page');
+        return { email: '', name: getUserName() };
+    } catch (error) {
+        console.error('Error extracting email:', error);
+        return { email: '', name: '' };
+    }
 };
 
 const getUserName = () => {
-    const nameElement = document.querySelector('.usertext .text, .username, [data-username], .user-name');
-    return nameElement ? nameElement.textContent.trim() : 'Student';
+    try {
+        // Try to extract name from common LMS elements
+        const nameElement = document.querySelector(
+            '.usertext .text, .username, [data-username], .user-name, .fullname'
+        );
+        
+        if (nameElement) {
+            let name = nameElement.textContent.trim();
+            // Remove email if it's part of the name text
+            name = name.replace(/[\w.-]+@[\w.-]+\.\w+/, '').trim();
+            if (name) {
+                console.log('Found user name:', name);
+                return name;
+            }
+        }
+
+        // Try to get from page title or header
+        const pageHeader = document.querySelector('h1, .page-header-headings h1');
+        if (pageHeader) {
+            const text = pageHeader.textContent;
+            if (text && !text.includes('Dashboard') && !text.includes('LMS')) {
+                return text.trim();
+            }
+        }
+
+        return 'Student';
+    } catch (error) {
+        console.error('Error extracting name:', error);
+        return 'Student';
+    }
 };
 
 const extractCourses = () => {

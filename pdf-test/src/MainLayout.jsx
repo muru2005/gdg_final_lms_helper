@@ -12,13 +12,13 @@ const MainLayout = () => {
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const fetchLocalData = () => {
-    chrome.storage.local.get(['user', 'allCourses', 'userName'], (result) => {
+    chrome.storage.local.get(['user', 'currentSemesterCourses', 'userName'], (result) => {
       setUser({
         name: result.user?.name || 'Student',
         semester: 'Sem 6'
       });
-      if (result.allCourses) {
-        setCourseCount(result.allCourses.length);
+      if (result.currentSemesterCourses) {
+        setCourseCount(result.currentSemesterCourses.length);
       }
     });
   };
@@ -146,14 +146,14 @@ const MainLayout = () => {
             <button
               onClick={handleRefresh}
               disabled={isRefreshing}
-              className='p-2.5 rounded-xl bg-white/10 hover:bg-white/20 active:bg-white/30 transition-all duration-200 border border-white/20 backdrop-blur-sm disabled:opacity-50'
+              className='cursor-pointer p-2.5 rounded-xl bg-white/10 hover:bg-white/20 active:bg-white/30 transition-all duration-200 border border-white/20 backdrop-blur-sm disabled:opacity-50'
               title="Refresh Data"
             >
               <RefreshCw size={18} className={isRefreshing ? 'animate-spin' : ''} />
             </button>
             <button
               onClick={handleLogout}
-              className='p-2.5 rounded-xl bg-white/10 hover:bg-white/20 active:bg-white/30 transition-all duration-200 border border-white/20 backdrop-blur-sm'
+              className='cursor-pointer p-2.5 rounded-xl bg-white/10 hover:bg-white/20 active:bg-white/30 transition-all duration-200 border border-white/20 backdrop-blur-sm'
               title="Logout"
             >
               <LogOut size={18} />
@@ -176,7 +176,7 @@ const MainLayout = () => {
             <button
               key={item.path}
               onClick={() => navigate(item.path)}
-              className={`flex flex-col items-center gap-1 px-6 py-2 rounded-xl transition-all duration-200 ${isActive
+              className={`cursor-pointer flex flex-col items-center gap-1 px-6 py-2 rounded-xl transition-all duration-200 ${isActive
                   ? 'text-violet-600 bg-violet-50'
                   : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'
                 }`}

@@ -119,7 +119,7 @@ const FileViewer = ({ fileUrl, fileName, onClose, onOpenSummary, onOpenMindMap, 
 
 // --- MODERN STYLES ---
 const overlayStyle = { position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.96)', zIndex: 999999, overflowY: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', backdropFilter: 'blur(15px)' };
-const headerStyle = { width: '100%', padding: '12px 30px', display: 'flex', justifyContent: 'space-between', backgroundColor: 'rgba(255, 255, 255, 0.05)', backdropFilter: 'blur(25px)', position: 'sticky', top: 0, zIndex: 1000, borderBottom: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 4px 30px rgba(0,0,0,0.4)' };
+const headerStyle = { width: '100%', padding: '12px 30px', display: 'flex', justifyContent: 'space-between', backgroundColor: 'rgba(0,0,0,0.7)', position: 'sticky', top: 0, zIndex: 1000, borderBottom: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 4px 30px rgba(0,0,0,0.4)' };
 const toolBtn = { padding: '8px 14px', borderRadius: '10px', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: '12px', backgroundColor: '#fff', color: '#1e293b', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '6px' };
 const zoomContainer = { display: 'flex', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: '10px', padding: '4px 8px', marginLeft: '10px' };
 const zoomBtn = { background: 'none', border: 'none', color: 'white', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', opacity: 0.8, transition: 'opacity 0.2s' };
