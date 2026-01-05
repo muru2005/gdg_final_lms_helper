@@ -151,7 +151,8 @@ gdg_final_lms_helper/
 -  `POST /api/get-assignments` - get assignments from the firestore of a particular user
 -  ` POST /api/mark-submitted` - To ensure the assignment once clicked submmited in the mail no longer the remainder for it is sent through the mail
 -   `POST /unssubscribe`   - To handle sunsubscribe requests for teh cron reminder email
--   
+-   `POST/sync-calendar` -TO sybnc the assignments with the google calendar
+-     
  ## Usage
 
 1. Start both backend and frontend servers
