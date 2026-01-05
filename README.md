@@ -139,11 +139,20 @@ gdg_final_lms_helper/
 
 - `POST /process-file` - Process file for AI operations
 - `POST /generate-summary` - Generate or retrieve file summary
-- `POST /generate-mindmap` - Create mind map from summary
+- `POST /generate-mindmap` -  Generate or retireve mindmap for contents
+- `POST/generate-quiz`- Generate an MCQ Quiz based on the document provided
 - `POST /chat` - Chat with AI about file content
 - `GET /file-status/{file_path}` - Check processing status
-
-## Usage
+- ` POST /track-event` - to store the pressed button in google analytics
+- `POST /api/save-summary`- Helps in saving summary in the gooogle docs format 
+- `POST /api/upload-file-to-drive`- Helps in uploading the mindmap to the google drive
+- `POST /api/verify-drive-token`- Verifies the google drive token
+-  `POST /api/sync-assignments/`- Sync the assingments to the firestore
+-  `POST /api/get-assignments` - get assignments from the firestore of a particular user
+-  ` POST /api/mark-submitted` - To ensure the assignment once clicked submmited in the mail no longer the remainder for it is sent through the mail
+-   `POST /unssubscribe`   - To handle sunsubscribe requests for teh cron reminder email
+-   
+ ## Usage
 
 1. Start both backend and frontend servers
 2. Navigate to `/files` in your browser
