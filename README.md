@@ -91,7 +91,7 @@ Each file in the browser shows three buttons on hover:
 - File-specific knowledge base
 
 ## File Structure
-
+```
 gdg_final_lms_helper/
 ├── backend/
 │   ├── app.py                # Flask backend
@@ -133,7 +133,7 @@ gdg_final_lms_helper/
     ├── vite.config.js
     ├── eslint.config.js
     └── .gitignore
-
+```
 
 ## API Endpoints
 
