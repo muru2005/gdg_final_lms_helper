@@ -4,7 +4,7 @@ This extension provides three main features for any file:
 1. **View & Ask AI** - View file content and chat with AI about it
 2. **Generate Mind Map** - Create interactive mind maps from file content
 3. **Generate Summary** - Create comprehensive summaries of files
-
+4. **Generate Quiz**- Generate an MCQ QUiz for 5 Questions based on the file content to test the student
 ## Setup Instructions
 
 ### Backend Setup
@@ -73,6 +73,10 @@ Each file in the browser shows three buttons on hover:
    - Uses structured formatting with headings and bullet points
    - Provides download as PDF functionality
    - Caches generated summaries for quick access
+4. **Quiz**
+   - It takes the first 15,000 characters of the document to ensure the AI has enough context without exceeding its "context window" (memory limit).
+   -  It also requires an access_token (OAuth), which is necessary to act on your behalf when creating the Google Form later.
+   -  The prompt explicitly tells the AI to "OUTPUT ONLY A VALID JSON ARRAY". This is critical because code cannot easily read a conversational response like "Sure! Here are some questions..
 
 ### Smart Processing
 - **First-time generation**: Shows confirmation dialog before processing
@@ -88,25 +92,48 @@ Each file in the browser shows three buttons on hover:
 
 ## File Structure
 
-```
 gdg_final_lms_helper/
 ├── backend/
-│   ├── app.py               # Main Flask backend (single server)
+│   ├── app.py                # Flask backend
 │   ├── requirements.txt      # Python dependencies
-│   ├── .env                 # Environment variables
-│   └── start_backend.bat    # Windows startup script
+│   ├── .env                  # API keys
+│   └── start_backend.bat     # Windows startup script
+│
 └── pdf-test/
     ├── src/
     │   ├── components/
-    │   │   ├── FileViewer.jsx    # Main file viewer with 3 buttons
-    │   │   ├── FileBrowser.jsx   # File browser interface
-    │   │   ├── ChatBox.jsx       # AI chat component
-    │   │   ├── MindMap.jsx       # Interactive mind map
-    │   │   └── SummaryModal.jsx  # Summary display modal
-    │   └── utils/
-    │       └── markdownParser.jsx # Markdown rendering utility
-    └── package.json
-```
+    │   │   ├── FileViewer.jsx     # File viewer with action buttons
+    │   │   ├── ChatBox.jsx        # AI chat component
+    │   │   ├── MindMap.jsx        # Interactive mind map
+    │   │   ├── SummaryModal.jsx  # Summary modal
+    │   │   └── QuizModal.jsx     # Quiz UI
+    │   │
+    │   ├── utils/
+    │   │   ├── markdownParser.jsx
+    │   │   └── analytics.js
+    │   │
+    │   ├── AIViewer.jsx          # Main AI viewer (Share enabled)
+    │   ├── App.jsx               # App routing & layout
+    │   ├── Courses.jsx
+    │   ├── Dashboard.jsx
+    │   ├── Datasync.jsx
+    │   ├── Home.jsx
+    │   ├── MainLayout.jsx
+    │   ├── background.jsx
+    │   ├── content.jsx
+    │   ├── index.css
+    │   └── main.jsx
+    │
+    ├── public/
+    │   └── index.html
+    │
+    ├── manifest.json             # Chrome extension manifest
+    ├── package.json
+    ├── package-lock.json
+    ├── vite.config.js
+    ├── eslint.config.js
+    └── .gitignore
+
 
 ## API Endpoints
 
@@ -122,11 +149,12 @@ gdg_final_lms_helper/
 2. Navigate to `/files` in your browser
 3. Hover over any file to see the three action buttons
 4. Click any button to:
-   - View the file and ask AI questions
+   - View the file and ask AI questions and attend quiz
    - Generate an interactive mind map
    - Create a comprehensive summary
 
 The system will ask for confirmation before generating new content and will cache results for faster subsequent access.
+Regenerate option is there as well regenerate the summary or the mindmap
 
 ## Share Feature
 
@@ -135,4 +163,3 @@ The share button (🔗) appears in viewers and allows sharing:
 - Generated summaries
 - Mind map visualizations
 
-Integration with Google Drive API can be added to the `shareContent` function in `FileViewer.jsx`.
