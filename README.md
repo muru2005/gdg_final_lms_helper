@@ -59,10 +59,16 @@ This extension provides comprehensive features for enhanced learning:
    pip install -r requirements.txt
    ```
 
-3. Create a `.env` file with your Groq API key:
+3. Create a `.env` file with required environment variables:
    ```
+   GOOGLE_CLIENT_ID=your_google_client_id_here
    GROQ_API_KEY=your_groq_api_key_here
-   
+   SMTP_SERVER="smtp.gmail.com"
+   SMTP_PORT=587
+   SMTP_EMAIL=your_email@gmail.com
+   SMTP_PASSWORD="your_app_password"
+   GA_MEASUREMENT_ID=your_ga_measurement_id
+   GA_API_SECRET=your_ga_api_secret
    ```
 
 4. Start the backend server:
@@ -86,12 +92,28 @@ This extension provides comprehensive features for enhanced learning:
    npm install
    ```
 
-3. Start the development server:
+3. Build the extension:
    ```bash
-   npm run dev
+   npm run build
    ```
 
-4. Open your browser and go to `http://localhost:5173/files` to see the file browser
+### Chrome Extension Setup
+
+1. Open Chrome and navigate to `chrome://extensions/`
+
+2. Enable "Developer mode" (toggle in top-right corner)
+
+3. Click "Load unpacked" and select the `pdf-test` folder
+
+4. The extension will appear in your extensions list
+
+### Development Workflow
+
+For any code changes:
+1. Make your changes to the source files
+2. Run `npm run build` in the `pdf-test` directory
+3. Go to `chrome://extensions/` and click the refresh button on your extension
+4. Changes will now be reflected in the extension
 
 ## Features
 
@@ -131,49 +153,81 @@ Each file in the browser shows three buttons on hover:
 - Real-time conversation interface
 - File-specific knowledge base
 
+## AI Processing Architecture
+
+### RAG Chat System
+- **Text Processing**: PDF content split into 800-word chunks with 150-word overlap
+- **Vector Storage**: ChromaDB with all-MiniLM-L6-v2 embeddings for semantic search
+- **Query Processing**: Retrieves top 3 relevant chunks for context
+- **AI Model**: Groq Llama-3.1-8b-instant (temperature=0)
+
+### Summary Generation
+- **Content Limit**: First 12,000 characters for model context
+- **AI Model**: Groq Llama-3.1-8b-instant (temperature=0.3)
+- **Output Format**: Structured markdown with bold headings and bullet points
+- **Caching**: Firestore storage with file hash as identifier
+
+### Mind Map Creation
+- **Content Source**: Uses existing summary or first 10,000 characters
+- **AI Model**: Groq Llama-3.1-8b-instant (temperature=0.1)
+- **Output Format**: Hierarchical JSON structure `{title: "...", children: [{title: "...", children: [...]}]}`
+- **Processing**: Regex-based JSON extraction from AI response
+
 ## File Structure
 ```
 gdg_final_lms_helper/
 ├── backend/
-│   ├── app.py                # Flask backend
-│   ├── requirements.txt      # Python dependencies
-│   ├── .env                  # API keys
-│   └── start_backend.bat     # Windows startup script
+│   ├── .chromadb/              # ChromaDB vector database storage
+│   ├── app.py                  # Main Flask backend server
+│   ├── cron_job.py             # Email automation scheduler
+│   ├── drive.py                # Google Drive API integration
+│   ├── test_backend.py         # Backend testing utilities
+│   ├── debug_dashboard.html    # Debug interface
+│   ├── debug_login_page.html   # Debug login page
+│   ├── requirements.txt        # Python dependencies
+│   └── .env                    # API keys and environment variables
 │
 └── pdf-test/
     ├── src/
     │   ├── components/
-    │   │   ├── FileViewer.jsx     # File viewer with action buttons
-    │   │   ├── ChatBox.jsx        # AI chat component
-    │   │   ├── MindMap.jsx        # Interactive mind map
-    │   │   ├── SummaryModal.jsx  # Summary modal
-    │   │   └── QuizModal.jsx     # Quiz UI
+    │   │   ├── FileBrowser.jsx     # File browser interface
+    │   │   ├── FileViewer.jsx      # File viewer with action buttons
+    │   │   ├── ChatBox.jsx         # AI chat component
+    │   │   ├── MindMap.jsx         # Interactive mind map
+    │   │   ├── SummaryModal.jsx    # Summary modal
+    │   │   └── QuizModal.jsx       # Quiz UI
     │   │
     │   ├── utils/
-    │   │   ├── markdownParser.jsx
-    │   │   └── analytics.js
+    │   │   ├── markdownParser.jsx  # Markdown processing
+    │   │   └── analytics.js        # Google Analytics integration
     │   │
-    │   ├── AIViewer.jsx          # Main AI viewer (Share enabled)
-    │   ├── App.jsx               # App routing & layout
-    │   ├── Courses.jsx
-    │   ├── Dashboard.jsx
-    │   ├── Datasync.jsx
-    │   ├── Home.jsx
-    │   ├── MainLayout.jsx
-    │   ├── background.jsx
-    │   ├── content.jsx
-    │   ├── index.css
-    │   └── main.jsx
+    │   ├── assets/
+    │   │   └── react.svg           # React logo
+    │   │
+    │   ├── AIViewer.jsx            # Main AI viewer (Share enabled)
+    │   ├── App.jsx                 # App routing & layout
+    │   ├── Courses.jsx             # Course management
+    │   ├── Dashboard.jsx           # Main dashboard
+    │   ├── DataSync.jsx            # Data synchronization
+    │   ├── Home.jsx                # Home page
+    │   ├── MainLayout.jsx          # Layout component
+    │   ├── background.jsx          # Chrome extension background script
+    │   ├── content.jsx             # Chrome extension content script
+    │   ├── index.css               # Global styles
+    │   └── main.jsx                # React entry point
     │
     ├── public/
-    │   └── index.html
+    │   ├── pdf.worker.mjs          # PDF.js worker
+    │   └── vite.svg                # Vite logo
     │
-    ├── manifest.json             # Chrome extension manifest
-    ├── package.json
-    ├── package-lock.json
-    ├── vite.config.js
-    ├── eslint.config.js
-    └── .gitignore
+    ├── manifest.json               # Chrome extension manifest
+    ├── index.html                  # Main HTML file
+    ├── package.json                # Node.js dependencies
+    ├── package-lock.json           # Dependency lock file
+    ├── vite.config.js              # Vite configuration
+    ├── eslint.config.js            # ESLint configuration
+    ├── .gitignore                  # Git ignore rules
+    └── README.md                   # Project documentation
 ```
 
 ## API Endpoints
