@@ -22,6 +22,7 @@ This extension provides three main features for any file:
 3. Create a `.env` file with your Groq API key:
    ```
    GROQ_API_KEY=your_groq_api_key_here
+   
    ```
 
 4. Start the backend server:
@@ -150,9 +151,9 @@ gdg_final_lms_helper/
 -  `POST /api/sync-assignments/`- Sync the assingments to the firestore
 -  `POST /api/get-assignments` - get assignments from the firestore of a particular user
 -  ` POST /api/mark-submitted` - To ensure the assignment once clicked submmited in the mail no longer the remainder for it is sent through the mail
--   `POST /unssubscribe`   - To handle sunsubscribe requests for teh cron reminder email
--   `POST/sync-calendar` -TO sybnc the assignments with the google calendar
--     
+-   `POST /unsubscribe`   - To handle unsubscribe requests for teh cron reminder email
+-   `POST/sync-calendar` -TO sync the assignments with the google calendar
+-     `POST/trigger-reminders`-send the assignment reminders to the sutdent's email
  ## Usage
 
 1. Start both backend and frontend servers
