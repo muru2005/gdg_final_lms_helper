@@ -1,10 +1,39 @@
-# LMS Helper - File Processing with AI
+# LMS Helper - One Side Panel. Everything.
 
-This extension provides three main features for any file:
+## The Problem with Traditional LMS Content
+
+### Scattered Information
+• Students constantly switch between LMS, Gmail, Calendar, and Drive.
+• No easy access, download or sharing of learning materials.
+
+### Missed Deadlines
+• Assignment information is scattered along platforms.
+• Lack of timely notifications leads to missed submissions and last-minute stress.
+
+### No Contextual Help
+• Students receive constant, in-context help while viewing slides.
+• Learning becomes passive and less engaging.
+
+## Solution - LMS Helper – One Side Panel. Everything.
+
+• LMS Helper is a Chrome extension side panel integrated directly with the LMS (Learning Management System).
+• Provides centralised access to:
+  1. courses,
+  2. deadlines,
+  3. notes, and
+  4. AI help.
+
+• Works alongside the current LMS without replacing it.
+• Makes it easier for the students to access the course content, share the pdfs and download the materials.
+• Leveraging AI Tools side-by-side, improves the productivity and performance of the students while learning and preparing for exams.
+
+## Features
+
+This extension provides four main features for any file:
 1. **View & Ask AI** - View file content and chat with AI about it
 2. **Generate Mind Map** - Create interactive mind maps from file content
 3. **Generate Summary** - Create comprehensive summaries of files
-4. **Generate Quiz**- Generate an MCQ QUiz for 5 Questions based on the file content to test the student
+4. **Generate Quiz** - Generate an MCQ Quiz for 5 Questions based on the file content to test the student
 ## Setup Instructions
 
 ### Backend Setup
@@ -173,4 +202,33 @@ The share button (🔗) appears in viewers and allows sharing:
 - PDF files
 - Generated summaries
 - Mind map visualizations
+
+## Google Technologies Used
+
+**Google OAuth** – Used to provide secure login using Google accounts and restrict access to SSN students only.
+
+**Google Calendar** – Integrated to sync academic schedules, exams, deadlines, working days, and holidays directly into the student's calendar.
+
+**Gmail** – Used to automatically send reminder emails to SSN accounts about pending, due, and overdue assignments.
+
+**Google Docs** – Used to store AI-generated summaries as editable documents and to generate summary PDFs that students can modify.
+
+**Google Drive** – Enables one-click sharing of summaries, mind maps, and PDFs with classmates or teachers.
+
+**Google Chrome Extension** – The primary user interface that integrates directly with LMS and Google Drive for instant AI-powered file processing.
+
+**Google Cloud Console** – Used to manage all clients, credentials, APIs, and enabled Google services for the platform.
+
+**Google Forms** – Used to auto-generate self-evaluation quizzes from study material and summaries.
+
+**Google Analytics** – Used to track user behavior and usage patterns to continuously improve the platform.
+
+**Firestore (Firebase)** – Used to store all summaries, documents, metadata, and user activity for fast access and easy sharing.
+
+## Contributors
+
+- **Prawin Kumar S**
+- **Murari Sreekumar**
+- **Srikumar V**
+- **Ramcharan S**
 
