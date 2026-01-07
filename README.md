@@ -29,11 +29,22 @@
 
 ## Features
 
-This extension provides four main features for any file:
+This extension provides comprehensive features for enhanced learning:
+
+### Core AI Features
 1. **View & Ask AI** - View file content and chat with AI about it
 2. **Generate Mind Map** - Create interactive mind maps from file content
 3. **Generate Summary** - Create comprehensive summaries of files
 4. **Generate Quiz** - Generate an MCQ Quiz for 5 Questions based on the file content to test the student
+
+### Smart Automation
+5. **Cron Email Automation** - Send pending assignments on Gmail as notifications (customizable)
+6. **Google Calendar Integration** - Updated academic working days, holidays as per student's semester
+7. **Share Course Materials** - Share mindmaps and other content with Google Drive API
+8. **Download Manager** - Download course materials unit wise or all together
+
+### Demo
+🎥 **Demo Video**: [https://ssn.lat/LMSHelper](https://ssn.lat/LMSHelper)
 ## Setup Instructions
 
 ### Backend Setup
