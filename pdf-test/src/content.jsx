@@ -95,6 +95,33 @@ const injectAIButtons = () => {
 };
 
 // --- DOWNLOADER LOGIC ---
+const ZIP_ROOT_NAME = 'course_materials';
+const MAX_ARCHIVE_FOLDER_LENGTH = 36;
+const MAX_ARCHIVE_FILE_BASENAME_LENGTH = 64;
+
+const normalizeArchiveSegment = (value, fallback, maxLength) => {
+    const sanitized = (value || '')
+        .replace(/[^a-z0-9]+/gi, '_')
+        .replace(/^_+|_+$/g, '')
+        .slice(0, maxLength);
+
+    return sanitized || fallback;
+};
+
+const buildArchiveFolderName = (index, title) => {
+    const prefix = `unit_${String(index + 1).padStart(2, '0')}`;
+    const remainingLength = Math.max(MAX_ARCHIVE_FOLDER_LENGTH - prefix.length - 1, 8);
+    const suffix = normalizeArchiveSegment(title, 'materials', remainingLength);
+    return `${prefix}_${suffix}`;
+};
+
+const buildArchiveFileName = (index, name, extension) => {
+    const prefix = `${String(index + 1).padStart(2, '0')}_`;
+    const remainingLength = Math.max(MAX_ARCHIVE_FILE_BASENAME_LENGTH - prefix.length - extension.length, 8);
+    const baseName = normalizeArchiveSegment(name, 'file', remainingLength);
+    return `${prefix}${baseName}${extension}`;
+};
+
 const extractCourseMaterials = () => {
     const units = [];
     const sections = document.querySelectorAll('li.section.main');
@@ -121,14 +148,13 @@ const extractCourseMaterials = () => {
 
 const downloadAndZip = async (selectedUnits) => {
     const zip = new JSZip();
-    const courseTitle = document.querySelector('.page-header-headings h1')?.textContent.trim() || 'Course_Content';
-    const folder = zip.folder(courseTitle);
+    const folder = zip.folder(ZIP_ROOT_NAME);
     const btn = document.getElementById('lms-helper-download-btn');
     const originalText = btn.innerText;
 
-    for (const unit of selectedUnits) {
-        const unitFolder = folder.folder(unit.title);
-        for (const material of unit.materials) {
+    for (const [unitIndex, unit] of selectedUnits.entries()) {
+        const unitFolder = folder.folder(buildArchiveFolderName(unitIndex, unit.title));
+        for (const [materialIndex, material] of unit.materials.entries()) {
             try {
                 let fetchUrl = material.url;
                 if (fetchUrl.includes('mod/resource/view.php')) fetchUrl += '&redirect=1';
@@ -138,15 +164,14 @@ const downloadAndZip = async (selectedUnits) => {
                 const contentType = response.headers.get('content-type');
                 if (contentType?.includes('powerpoint')) extension = '.pptx';
                 else if (contentType?.includes('word')) extension = '.docx';
-                let filename = material.name.replace(/[^a-z0-9]/gi, '_').trim();
-                if (!filename.endsWith(extension)) filename += extension;
+                const filename = buildArchiveFileName(materialIndex, material.name, extension);
                 unitFolder.file(filename, blob);
             } catch (err) { console.error(`Failed: ${material.name}`, err); }
         }
     }
     btn.innerText = "Generating ZIP...";
     const content = await zip.generateAsync({ type: "blob" });
-    saveAs(content, `${courseTitle}.zip`);
+    saveAs(content, `${ZIP_ROOT_NAME}.zip`);
     btn.innerText = originalText;
 };
 

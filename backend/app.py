@@ -44,7 +44,8 @@ from googleapiclient.http import MediaIoBaseUpload
 import io  # Add this if you use io.BytesIO
 from io import BytesIO  # OR add this to use BytesIO directly
 # 1. INITIALIZATION
-load_dotenv()
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+load_dotenv(os.path.join(BASE_DIR, ".env"))
 app = Flask(__name__)
 
 # Enable CORS for Chrome Extension and Local Dev
@@ -63,8 +64,23 @@ embedding_function = embedding_functions.SentenceTransformerEmbeddingFunction(
     model_name="all-MiniLM-L6-v2"
 )
 # Firebase Setup
-cred = credentials.Certificate("firebase-service-account.json")
-firebase_admin.initialize_app(cred)
+firebase_service_account_path = os.getenv(
+    "FIREBASE_SERVICE_ACCOUNT_PATH",
+    os.path.join(BASE_DIR, "firebase-service-account.json")
+)
+
+if not os.path.isabs(firebase_service_account_path):
+    firebase_service_account_path = os.path.join(BASE_DIR, firebase_service_account_path)
+
+if not os.path.exists(firebase_service_account_path):
+    raise FileNotFoundError(
+        "Firebase service account JSON not found. Set FIREBASE_SERVICE_ACCOUNT_PATH in backend/.env "
+        "or place firebase-service-account.json in the backend folder."
+    )
+
+cred = credentials.Certificate(firebase_service_account_path)
+if not firebase_admin._apps:
+    firebase_admin.initialize_app(cred)
 
 db = firestore.client()
 
