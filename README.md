@@ -62,6 +62,7 @@ This extension provides comprehensive features for enhanced learning:
 3. Create a `.env` file with required environment variables:
    ```
    GOOGLE_CLIENT_ID=your_google_client_id_here
+   FIREBASE_SERVICE_ACCOUNT_PATH=./firebase-service-account.json
    GROQ_API_KEY=your_groq_api_key_here
    SMTP_SERVER="smtp.gmail.com"
    SMTP_PORT=587
@@ -71,7 +72,10 @@ This extension provides comprehensive features for enhanced learning:
    GA_API_SECRET=your_ga_api_secret
    ```
 
-4. Start the backend server:
+4. Add your Firebase Admin SDK service account JSON file.
+   Place it at `backend/firebase-service-account.json` or point `FIREBASE_SERVICE_ACCOUNT_PATH` to its location.
+
+5. Start the backend server:
    ```bash
    python app.py
    ```
@@ -103,7 +107,7 @@ This extension provides comprehensive features for enhanced learning:
 
 2. Enable "Developer mode" (toggle in top-right corner)
 
-3. Click "Load unpacked" and select the `pdf-test` folder
+3. Click "Load unpacked" and select the `pdf-test/dist` folder
 
 4. The extension will appear in your extensions list
 
